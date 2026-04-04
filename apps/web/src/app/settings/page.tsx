@@ -22,10 +22,8 @@ import {
   ChevronRight,
   Github,
   KeyRound,
-  Search,
   Download,
   Package,
-  Star,
   Trash2,
   Layers,
 } from "lucide-react";
@@ -1183,47 +1181,56 @@ function GitHubTokenManager() {
   );
 }
 
+function formatInstallCount(count: number): string {
+  if (count >= 1_000_000) {
+    const val = count / 1_000_000;
+    return val % 1 === 0 ? `${val}M` : `${val.toFixed(1)}M`;
+  }
+  if (count >= 1_000) {
+    const val = count / 1_000;
+    return val % 1 === 0 ? `${val}K` : `${val.toFixed(1)}K`;
+  }
+  return String(count);
+}
+
+function isMarketplaceSource(source: string): boolean {
+  return source.includes("/");
+}
+
 function MarketplaceTab() {
   const [query, setQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<
-    Array<{ source: string; name: string; description: string; installs: number }>
-  >([]);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [installed, setInstalled] = useState<any[]>([]);
-  const [loadingInstalled, setLoadingInstalled] = useState(true);
+  const [skills, setSkills] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [installing, setInstalling] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
+  const loadSkills = () => {
+    setLoading(true);
     api
       .listMarketplaceSkills()
-      .then((res) => setInstalled(res.skills))
+      .then((res) => setSkills(res.skills))
       .catch(() => {})
-      .finally(() => setLoadingInstalled(false));
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadSkills();
   }, []);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
-    setSearching(true);
-    setHasSearched(true);
-    try {
-      const res = await api.searchMarketplace(query.trim());
-      setSearchResults(res.results);
-    } catch (err) {
-      toast.error("Search failed", {
-        description: err instanceof Error ? err.message : "Unknown error",
-      });
-    } finally {
-      setSearching(false);
-    }
-  };
+  const filteredSkills = skills.filter((skill) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      (skill.name && skill.name.toLowerCase().includes(q)) ||
+      (skill.source && skill.source.toLowerCase().includes(q))
+    );
+  });
 
   const handleInstall = async (source: string) => {
     setInstalling(source);
     try {
       const res = await api.installMarketplaceSkill(source);
-      setInstalled((prev) => [...prev, res.skill]);
+      setSkills((prev) => prev.map((s) => (s.source === source ? res.skill : s)));
       toast.success("Skill installed");
     } catch (err) {
       toast.error("Install failed", {
@@ -1237,7 +1244,7 @@ function MarketplaceTab() {
   const handleDelete = async (id: string) => {
     try {
       await api.deleteMarketplaceSkill(id);
-      setInstalled((prev) => prev.filter((s) => s.id !== id));
+      setSkills((prev) => prev.filter((s) => s.id !== id));
       toast.success("Marketplace skill removed");
     } catch (err) {
       toast.error("Failed to remove skill", {
@@ -1246,15 +1253,12 @@ function MarketplaceTab() {
     }
   };
 
-  const handleSyncAll = async () => {
+  const handleSync = async () => {
     setSyncing(true);
     try {
       const res = await api.syncMarketplaceSkills();
-      toast.success(
-        `Synced ${res.synced} skills${res.errors.length > 0 ? ` (${res.errors.length} errors)` : ""}`,
-      );
-      const updated = await api.listMarketplaceSkills();
-      setInstalled(updated.skills);
+      toast.success(`Added ${res.added}, updated ${res.updated} skills`);
+      loadSkills();
     } catch (err) {
       toast.error("Sync failed", {
         description: err instanceof Error ? err.message : "Unknown error",
@@ -1266,150 +1270,127 @@ function MarketplaceTab() {
 
   return (
     <div className="space-y-6">
-      {/* Search */}
+      {/* Header with sync button */}
       <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
-          <Search className="w-4 h-4" />
-          Search skills.sh
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-text-muted flex items-center gap-2">
+            <Package className="w-4 h-4" />
+            Marketplace Skills
+          </h2>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary-hover transition-colors disabled:opacity-50"
+          >
+            {syncing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5" />
+            )}
+            Sync from skills.sh
+          </button>
+        </div>
+
         <div className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-4">
-          <div className="flex gap-2">
+          {/* Search box - filters locally */}
+          <div>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="Search for skills (e.g. docker, testing, deploy)..."
-              className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+              placeholder="Filter skills by name or source..."
+              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
             />
-            <button
-              onClick={handleSearch}
-              disabled={searching || !query.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary-hover disabled:opacity-50"
-            >
-              {searching ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Search className="w-3.5 h-3.5" />
-              )}
-              Search
-            </button>
           </div>
 
-          {hasSearched && searchResults.length === 0 && !searching && (
+          {loading ? (
+            <div className="text-center text-text-muted text-sm py-8">
+              <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading...
+            </div>
+          ) : skills.length === 0 ? (
+            <div className="text-center py-10 space-y-3">
+              <Package className="w-8 h-8 text-text-muted/40 mx-auto" />
+              <p className="text-sm text-text-muted">No skills synced yet.</p>
+              <p className="text-xs text-text-muted/60">
+                Click <strong>Sync from skills.sh</strong> to fetch the skills.sh catalog.
+              </p>
+            </div>
+          ) : filteredSkills.length === 0 ? (
             <p className="text-xs text-text-muted/60 text-center py-4">
-              No results found for &quot;{query}&quot;
+              No skills match &quot;{query}&quot;
             </p>
-          )}
-
-          {searchResults.length > 0 && (
+          ) : (
             <div className="space-y-2">
-              {searchResults.map((result) => {
-                const isInstalled = installed.some((s) => s.source === result.source);
+              {filteredSkills.map((skill) => {
+                const isInstalled = !!skill.prompt;
+                const isFromMarketplace = isMarketplaceSource(skill.source || "");
                 return (
                   <div
-                    key={result.source}
+                    key={skill.id}
                     className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg"
                   >
                     <Package className="w-4 h-4 text-text-muted shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{result.name}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold">{skill.name}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted font-mono">
-                          {result.source}
+                          {skill.source}
                         </span>
+                        {isFromMarketplace ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                            marketplace
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted font-medium">
+                            custom
+                          </span>
+                        )}
+                        {isInstalled ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success font-medium">
+                            installed
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted font-medium">
+                            catalog
+                          </span>
+                        )}
                       </div>
-                      {result.description && (
+                      {skill.description && (
                         <p className="text-xs text-text-muted mt-0.5 truncate">
-                          {result.description}
+                          {skill.description}
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-text-muted shrink-0">
-                      <Download className="w-3 h-3" />
-                      {result.installs.toLocaleString()} installs
-                    </div>
-                    <button
-                      onClick={() => handleInstall(result.source)}
-                      disabled={isInstalled || installing === result.source}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium shrink-0 ${
-                        isInstalled
-                          ? "bg-success/10 text-success cursor-default"
-                          : "bg-primary text-white hover:bg-primary-hover disabled:opacity-50"
-                      }`}
-                    >
-                      {installing === result.source ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : isInstalled ? (
-                        <CheckCircle2 className="w-3 h-3" />
-                      ) : (
+                    {skill.installs != null && skill.installs > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-text-muted shrink-0">
                         <Download className="w-3 h-3" />
+                        {formatInstallCount(skill.installs)} installs
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!isInstalled && (
+                        <button
+                          onClick={() => handleInstall(skill.source)}
+                          disabled={installing === skill.source}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-white hover:bg-primary-hover disabled:opacity-50"
+                        >
+                          {installing === skill.source ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Download className="w-3 h-3" />
+                          )}
+                          Install
+                        </button>
                       )}
-                      {isInstalled ? "Installed" : "Install"}
-                    </button>
+                      <button
+                        onClick={() => handleDelete(skill.id)}
+                        className="text-text-muted hover:text-error shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Installed Marketplace Skills */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-text-muted flex items-center gap-2">
-            <Download className="w-4 h-4" />
-            Installed Marketplace Skills
-          </h2>
-          <button
-            onClick={handleSyncAll}
-            disabled={syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs hover:bg-primary/20 transition-colors disabled:opacity-50"
-          >
-            {syncing ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3 h-3" />
-            )}
-            Sync All
-          </button>
-        </div>
-        <div className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-          {loadingInstalled ? (
-            <div className="text-center text-text-muted text-sm py-4">
-              <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading...
-            </div>
-          ) : installed.length === 0 ? (
-            <p className="text-xs text-text-muted/60 text-center py-4">
-              No marketplace skills installed. Use the search above to find and install skills.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {installed.map((skill) => (
-                <div
-                  key={skill.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg"
-                >
-                  <Package className="w-4 h-4 text-text-muted shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{skill.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted font-mono">
-                        {skill.source}
-                      </span>
-                    </div>
-                    {skill.description && (
-                      <p className="text-xs text-text-muted mt-0.5 truncate">{skill.description}</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => handleDelete(skill.id)}
-                    className="text-text-muted hover:text-error shrink-0"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
             </div>
           )}
         </div>

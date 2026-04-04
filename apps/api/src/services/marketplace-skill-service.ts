@@ -35,96 +35,102 @@ function parseSkillMd(content: string): { name?: string; description?: string; b
   return { name, description, body };
 }
 
-// ── Search skills.sh via GitHub API ─────────────────────────────────────────
+// ── Fetch entire skills.sh catalog ──────────────────────────────────────────
 
-export async function searchMarketplace(
-  query: string,
-  _githubToken?: string,
-): Promise<Array<{ source: string; name: string; description: string; installs: number }>> {
-  // Use the official skills CLI to search skills.sh marketplace
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const execFileAsync = promisify(execFile);
-
-  try {
-    const { stdout } = await execFileAsync("npx", ["-y", "skills", "search", query], {
-      timeout: 15_000,
-      env: { ...process.env, NO_COLOR: "1" },
-    });
-
-    // Parse output lines: "owner/repo@skill-name  NNK installs"
-    const results: Array<{ source: string; name: string; description: string; installs: number }> =
-      [];
-    for (const line of stdout.split("\n")) {
-      // Match lines like: "github/awesome-copilot@git-commit  19.1K installs"
-      const match = line.match(/^\s*([^\s]+\/[^\s]+)@([^\s]+)\s+([\d.]+[KM]?)\s*installs/);
-      if (!match) continue;
-
-      const [, ownerRepo, skillName, installStr] = match;
-      let installs = parseFloat(installStr);
-      if (installStr.endsWith("K")) installs *= 1000;
-      if (installStr.endsWith("M")) installs *= 1_000_000;
-
-      results.push({
-        source: `${ownerRepo}@${skillName}`,
-        name: skillName,
-        description: `from ${ownerRepo}`,
-        installs: Math.round(installs),
-      });
-    }
-
-    return results;
-  } catch (err) {
-    logger.warn({ err, query }, "skills CLI search failed, falling back to GitHub search");
-    // Fallback: basic GitHub search
-    return searchGitHubFallback(query, _githubToken);
-  }
+interface SkillsCatalogEntry {
+  source: string; // "owner/repo"
+  skillId: string; // skill name within repo
+  name: string;
+  installs: number;
 }
 
-/** Fallback search via GitHub API when skills CLI is not available */
-async function searchGitHubFallback(
-  query: string,
-  githubToken?: string,
-): Promise<Array<{ source: string; name: string; description: string; installs: number }>> {
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github.v3+json",
-    "User-Agent": "Optio",
-  };
-  if (githubToken) headers.Authorization = `Bearer ${githubToken}`;
+/**
+ * Fetch the full skills.sh catalog by scraping the RSC data from the homepage.
+ * The site embeds an `initialSkills` array in its server-rendered payload.
+ */
+export async function fetchSkillsCatalog(): Promise<SkillsCatalogEntry[]> {
+  const res = await fetch("https://skills.sh/", {
+    headers: { "User-Agent": "Optio" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch skills.sh: ${res.status}`);
+  const html = await res.text();
 
-  const res = await fetch(
-    `https://api.github.com/search/code?q=${encodeURIComponent(`${query} filename:SKILL.md`)}&per_page=20`,
-    { headers },
-  );
-  if (!res.ok) throw new Error(`GitHub search failed: ${res.status}`);
-
-  const data = (await res.json()) as {
-    items: Array<{
-      repository: { full_name: string; description: string; stargazers_count: number };
-      path: string;
-      name: string;
-    }>;
-  };
-
-  const seen = new Set<string>();
-  const results: Array<{ source: string; name: string; description: string; installs: number }> =
-    [];
-  for (const item of data.items) {
-    const source = item.repository.full_name;
-    if (seen.has(source)) continue;
-    seen.add(source);
-    const pathParts = item.path.split("/");
-    const skillName =
-      pathParts.length > 1 ? pathParts[pathParts.length - 2] : (source.split("/")[1] ?? "unknown");
-    results.push({
-      source,
-      name: skillName,
-      description: item.repository.description ?? "",
-      installs: item.repository.stargazers_count ?? 0,
-    });
+  // Extract initialSkills JSON from RSC stream
+  const match = html.match(/"initialSkills":\[(\{.*?\})\]/);
+  if (!match) {
+    // Try broader match — the array can be very long
+    const bigMatch = html.match(/"initialSkills":(\[[^\]]*\])/);
+    if (!bigMatch) throw new Error("Could not find initialSkills in skills.sh response");
+    return JSON.parse(bigMatch[1]) as SkillsCatalogEntry[];
   }
-  results.sort((a, b) => b.installs - a.installs);
-  return results;
+  return JSON.parse(`[${match[1]}]`) as SkillsCatalogEntry[];
+}
+
+/**
+ * Sync entire skills.sh catalog into marketplace_skills table.
+ * Inserts new skills, updates existing ones (install counts).
+ * Returns count of new + updated skills.
+ */
+export async function syncCatalog(
+  workspaceId?: string | null,
+): Promise<{ added: number; updated: number; total: number }> {
+  const catalog = await fetchSkillsCatalog();
+  let added = 0;
+  let updated = 0;
+
+  for (const entry of catalog) {
+    const sourceKey = `${entry.source}@${entry.skillId}`;
+    const [existing] = await db
+      .select()
+      .from(marketplaceSkills)
+      .where(eq(marketplaceSkills.source, sourceKey));
+
+    if (existing) {
+      await db
+        .update(marketplaceSkills)
+        .set({
+          name: entry.name,
+          installs: entry.installs,
+          lastSyncedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(marketplaceSkills.id, existing.id));
+      updated++;
+    } else {
+      await db.insert(marketplaceSkills).values({
+        source: sourceKey,
+        skillPath: `${entry.skillId}/SKILL.md`,
+        name: entry.name,
+        description: `from ${entry.source}`,
+        prompt: "", // will be fetched on install
+        installs: entry.installs,
+        lastSyncedAt: new Date(),
+        workspaceId: workspaceId ?? null,
+      });
+      added++;
+    }
+  }
+
+  logger.info({ added, updated, total: catalog.length }, "Synced skills.sh catalog");
+  return { added, updated, total: catalog.length };
+}
+
+/**
+ * Search installed marketplace skills locally (in DB).
+ * Filters by name, source, or description matching the query.
+ */
+export async function searchMarketplace(query: string): Promise<MarketplaceSkillConfig[]> {
+  const all = await db.select().from(marketplaceSkills);
+  const q = query.toLowerCase();
+  const filtered = all.filter(
+    (s) =>
+      s.name.toLowerCase().includes(q) ||
+      s.source.toLowerCase().includes(q) ||
+      (s.description ?? "").toLowerCase().includes(q),
+  );
+  // Sort by installs descending (most popular first)
+  filtered.sort((a, b) => (b.installs ?? 0) - (a.installs ?? 0));
+  return filtered as MarketplaceSkillConfig[];
 }
 
 // ── Install a skill from GitHub ─────────────────────────────────────────────

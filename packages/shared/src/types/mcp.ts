@@ -70,6 +70,7 @@ export interface MarketplaceSkillConfig {
   description?: string | null;
   prompt: string;
   referenceFiles?: Array<{ path: string; content: string }> | null;
+  installs?: number | null;
   sourceCommit?: string | null;
   lastSyncedAt?: Date | null;
   workspaceId?: string | null;

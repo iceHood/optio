@@ -108,21 +108,26 @@ export async function skillSetRoutes(app: FastifyInstance) {
 
   // ── Marketplace Skills ────────────────────────────────────────────────────
 
-  const searchSchema = z.object({ query: z.string().min(1).max(200) });
+  // Search local DB (skills must be synced first)
+  const searchSchema = z.object({ query: z.string().max(200).default("") });
 
   app.post("/api/skills/marketplace/search", async (req, reply) => {
     const parsed = searchSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0].message });
-    const ghToken = await retrieveSecret("GITHUB_TOKEN").catch(() => null);
-    const results = await marketplaceService.searchMarketplace(
-      parsed.data.query,
-      ghToken ?? undefined,
-    );
-    reply.send({ results });
+    const results = await marketplaceService.searchMarketplace(parsed.data.query);
+    reply.send({ skills: results });
   });
 
+  // List all marketplace skills in DB
+  app.get("/api/skills/marketplace", async (req, reply) => {
+    const wsId = req.user?.workspaceId || null;
+    const skills = await marketplaceService.listMarketplaceSkills(wsId);
+    reply.send({ skills });
+  });
+
+  // Install: fetch SKILL.md content from GitHub and store it
   const installSchema = z.object({
-    source: z.string().min(1), // "owner/repo"
+    source: z.string().min(1), // "owner/repo@skill-name"
     skillPath: z.string().optional(),
   });
 
@@ -131,19 +136,18 @@ export async function skillSetRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0].message });
     const wsId = req.user?.workspaceId || null;
     const ghToken = await retrieveSecret("GITHUB_TOKEN").catch(() => null);
+
+    // Parse "owner/repo@skill" format
+    const [ownerRepo, skillName] = parsed.data.source.split("@");
+    const skillPath = parsed.data.skillPath ?? (skillName ? `${skillName}/SKILL.md` : undefined);
+
     const skill = await marketplaceService.installFromGitHub(
-      parsed.data.source,
-      parsed.data.skillPath,
+      ownerRepo,
+      skillPath,
       wsId,
       ghToken ?? undefined,
     );
     reply.status(201).send({ skill });
-  });
-
-  app.get("/api/skills/marketplace", async (req, reply) => {
-    const wsId = req.user?.workspaceId || null;
-    const skills = await marketplaceService.listMarketplaceSkills(wsId);
-    reply.send({ skills });
   });
 
   app.delete("/api/skills/marketplace/:id", async (req, reply) => {
@@ -152,11 +156,15 @@ export async function skillSetRoutes(app: FastifyInstance) {
     reply.status(204).send();
   });
 
+  // Sync: fetch entire skills.sh catalog → update/insert into DB
   app.post("/api/skills/marketplace/sync", async (req, reply) => {
     const wsId = req.user?.workspaceId || null;
-    const ghToken = await retrieveSecret("GITHUB_TOKEN").catch(() => null);
-    const result = await marketplaceService.syncAllMarketplaceSkills(wsId, ghToken ?? undefined);
-    reply.send(result);
+    try {
+      const result = await marketplaceService.syncCatalog(wsId);
+      reply.send(result);
+    } catch (err) {
+      reply.status(500).send({ error: `Sync failed: ${String(err)}` });
+    }
   });
 
   // ── Skill Upload (SKILL.md content as JSON) ────────────────────────────

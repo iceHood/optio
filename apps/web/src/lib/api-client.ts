@@ -1007,7 +1007,7 @@ export const api = {
     request<void>(`/api/skills/marketplace/${id}`, { method: "DELETE" }),
 
   syncMarketplaceSkills: () =>
-    request<{ synced: number; errors: string[] }>("/api/skills/marketplace/sync", {
+    request<{ added: number; updated: number; total: number }>("/api/skills/marketplace/sync", {
       method: "POST",
     }),
 

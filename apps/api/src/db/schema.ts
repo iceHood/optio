@@ -689,6 +689,7 @@ export const marketplaceSkills = pgTable(
     description: text("description"),
     prompt: text("prompt").notNull(), // markdown content from SKILL.md
     referenceFiles: jsonb("reference_files").$type<Array<{ path: string; content: string }>>(),
+    installs: integer("installs").default(0), // install count from skills.sh
     sourceCommit: text("source_commit"), // git commit SHA for version tracking
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     workspaceId: uuid("workspace_id"),
