@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useStore } from "@/hooks/use-store";
 import {
   CheckCircle,
   Zap,
@@ -37,6 +40,7 @@ function QuickLink({
 }
 
 export function WelcomeHero({ repoCount }: { repoCount: number }) {
+  const isDocker = useStore((s) => s.runtime) === "docker";
   const hasRepos = repoCount > 0;
 
   const steps = [
@@ -81,8 +85,8 @@ export function WelcomeHero({ repoCount }: { repoCount: number }) {
           </div>
           <p className="text-text-muted text-lg max-w-xl leading-relaxed mb-2">
             CI/CD where the build step is an AI agent. Submit tasks from the dashboard or GitHub
-            Issues, and Optio handles the rest &mdash; isolated pods, code generation, and pull
-            requests.
+            Issues, and Optio handles the rest &mdash; isolated {isDocker ? "containers" : "pods"},
+            code generation, and pull requests.
           </p>
 
           <div className="flex items-center gap-4 mt-6 text-sm text-text-muted">
@@ -96,7 +100,7 @@ export function WelcomeHero({ repoCount }: { repoCount: number }) {
             </span>
             <span className="flex items-center gap-1.5">
               <Container className="w-4 h-4 text-primary" />
-              Isolated K8s pods
+              {isDocker ? "Isolated containers" : "Isolated K8s pods"}
             </span>
           </div>
         </div>
@@ -173,8 +177,8 @@ export function WelcomeHero({ repoCount }: { repoCount: number }) {
         />
         <QuickLink
           icon={Container}
-          label="Cluster"
-          description="K8s pods & nodes"
+          label={isDocker ? "Infrastructure" : "Cluster"}
+          description={isDocker ? "Docker containers" : "K8s pods & nodes"}
           href="/cluster"
         />
         <QuickLink

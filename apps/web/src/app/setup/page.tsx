@@ -466,7 +466,7 @@ export default function SetupPage() {
                     )}
                   </span>
                   <span>
-                    Kubernetes runtime:{" "}
+                    Container runtime:{" "}
                     {runtimeHealthy === null
                       ? "Checking..."
                       : runtimeHealthy

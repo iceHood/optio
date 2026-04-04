@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import { useStore } from "@/hooks/use-store";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { api } from "@/lib/api-client";
 import Link from "next/link";
@@ -22,6 +23,7 @@ import {
 
 export default function PodDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const isDocker = useStore((s) => s.runtime) === "docker";
   const router = useRouter();
   const [pod, setPod] = useState<any>(null);
   usePageTitle(pod?.podName ?? "Pod");
@@ -98,7 +100,7 @@ export default function PodDetailPage({ params }: { params: Promise<{ id: string
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-error/10 text-error text-xs hover:bg-error/20 disabled:opacity-50"
         >
           <RotateCcw className="w-3 h-3" />
-          {restarting ? "Restarting..." : "Restart Pod"}
+          {restarting ? "Restarting..." : isDocker ? "Restart Container" : "Restart Pod"}
         </button>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useStore } from "@/hooks/use-store";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { api } from "@/lib/api-client";
 import { NumberInput } from "@/components/number-input";
@@ -31,6 +32,7 @@ const STEPS = [
 type StepId = (typeof STEPS)[number]["id"];
 
 export default function NewRepoPage() {
+  const isDocker = useStore((s) => s.runtime) === "docker";
   usePageTitle("Add Repository");
   const router = useRouter();
   const [stepIndex, setStepIndex] = useState(0);
@@ -238,6 +240,7 @@ export default function NewRepoPage() {
             setShowAdvanced={setShowAdvanced}
             detected={detected}
             inputClass={inputClass}
+            isDocker={isDocker}
           />
         )}
 
@@ -419,6 +422,7 @@ function ImageStep({
   setShowAdvanced,
   detected,
   inputClass,
+  isDocker,
 }: {
   imagePreset: string;
   setImagePreset: (v: string) => void;
@@ -430,6 +434,7 @@ function ImageStep({
   setShowAdvanced: (v: boolean) => void;
   detected: boolean;
   inputClass: string;
+  isDocker: boolean;
 }) {
   return (
     <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-4">
@@ -495,8 +500,8 @@ function ImageStep({
           <div>
             <label className="block text-xs text-text-muted mb-1">Setup commands</label>
             <p className="text-[10px] text-text-muted/60 mb-1.5">
-              Shell commands run inside the pod after cloning. Use this to install dependencies,
-              build tools, or configure the environment.
+              Shell commands run inside the {isDocker ? "container" : "pod"} after cloning. Use this
+              to install dependencies, build tools, or configure the environment.
             </p>
             <textarea
               value={setupCommands}

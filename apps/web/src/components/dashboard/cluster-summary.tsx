@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useStore } from "@/hooks/use-store";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -109,6 +110,7 @@ export function ClusterSummary({
   metricsAvailable: boolean | null;
   metricsHistory: MetricsHistoryPoint[];
 }) {
+  const isDocker = useStore((s) => s.runtime) === "docker";
   const [showMetrics, setShowMetrics] = useState(false);
 
   const { nodes, summary } = cluster ?? {
@@ -129,7 +131,8 @@ export function ClusterSummary({
         <div className="flex flex-wrap items-center gap-3 text-xs">
           {nodes[0] && (
             <span className="flex items-center gap-1.5 text-text-muted font-mono border-r border-border pr-4 mr-1">
-              {nodes[0].name} <span className="text-text-muted/50">/ optio</span>
+              {nodes[0].name}{" "}
+              <span className="text-text-muted/50">{isDocker ? "" : " / optio"}</span>
             </span>
           )}
           <span className="flex items-center gap-1.5">
@@ -139,14 +142,14 @@ export function ClusterSummary({
                 summary.readyNodes > 0 ? "text-success" : "text-error",
               )}
             />
-            <span className="text-text-muted">Nodes</span>
+            <span className="text-text-muted">{isDocker ? "Host" : "Nodes"}</span>
             <span className="font-medium">
               {summary.readyNodes}/{summary.totalNodes}
             </span>
           </span>
           <span className="flex items-center gap-1.5">
             <Container className="w-3 h-3 text-text-muted" />
-            <span className="text-text-muted">Pods</span>
+            <span className="text-text-muted">{isDocker ? "Containers" : "Pods"}</span>
             <span className="font-medium">
               {summary.runningPods}/{summary.totalPods}
             </span>
@@ -216,14 +219,16 @@ export function ClusterSummary({
       {showMetrics && (
         <div className="border-t border-border/30 px-4 py-4">
           {metricsAvailable === false ? (
-            <div className="text-xs text-text-muted/50 text-center py-3">
-              metrics-server not detected — CPU and memory charts unavailable.
-              <br />
-              <span className="text-[10px]">
-                Install with: kubectl apply -f
-                https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-              </span>
-            </div>
+            !isDocker && (
+              <div className="text-xs text-text-muted/50 text-center py-3">
+                metrics-server not detected — CPU and memory charts unavailable.
+                <br />
+                <span className="text-[10px]">
+                  Install with: kubectl apply -f
+                  https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+                </span>
+              </div>
+            )
           ) : metricsHistory.length > 1 ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -242,7 +247,7 @@ export function ClusterSummary({
                   max={100}
                 />
                 <MiniChart
-                  label="Pods"
+                  label={isDocker ? "Containers" : "Pods"}
                   data={metricsHistory.map((m) => m.pods)}
                   suffix=""
                   color="var(--color-success)"

@@ -26,6 +26,8 @@ export interface WorkspaceSummary {
   role: string;
 }
 
+export type RuntimeType = "docker" | "kubernetes";
+
 interface AppState {
   tasks: TaskSummary[];
   setTasks: (tasks: TaskSummary[]) => void;
@@ -34,6 +36,9 @@ interface AppState {
   notifications: Notification[];
   addNotification: (n: Notification) => void;
   dismissNotification: (id: string) => void;
+  // Runtime mode (docker or kubernetes)
+  runtime: RuntimeType;
+  setRuntime: (runtime: RuntimeType) => void;
   // Workspace state
   currentWorkspaceId: string | null;
   workspaces: WorkspaceSummary[];
@@ -71,6 +76,10 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({
       tasks: [task, ...state.tasks],
     })),
+
+  // Runtime mode
+  runtime: "docker" as RuntimeType,
+  setRuntime: (runtime: RuntimeType) => set({ runtime }),
 
   notifications: [],
   addNotification: (n) =>

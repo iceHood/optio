@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { useStore } from "@/hooks/use-store";
 import {
   Activity,
   Circle,
@@ -50,6 +51,7 @@ export function PodsList({
   recentTasks: any[];
   repoPodRecords: any[];
 }) {
+  const isDocker = useStore((s) => s.runtime) === "docker";
   const [expandedPods, setExpandedPods] = useState<Set<string>>(new Set());
   const [dismissedEvents, setDismissedEvents] = useState<Set<number>>(new Set());
 
@@ -65,7 +67,7 @@ export function PodsList({
       {pods.length === 0 ? (
         <EmptyState
           icon={Container}
-          title="No pods running"
+          title={isDocker ? "No containers running" : "No pods running"}
           description="Pods are created automatically when tasks start. They stay warm for fast iteration."
         />
       ) : (
@@ -101,7 +103,7 @@ export function PodsList({
                     {pod.isOptioManaged && (
                       <>
                         <span className="text-[11px] px-1 py-0.5 rounded bg-primary/10 text-primary">
-                          workspace
+                          {isDocker ? "worker" : "workspace"}
                         </span>
                         {repoPod && <CapacityIndicator repoPod={repoPod} />}
                         <ChevronDown

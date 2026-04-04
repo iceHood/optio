@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import { useStore } from "@/hooks/use-store";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { api } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
@@ -31,6 +32,7 @@ import Link from "next/link";
 
 export default function RepoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const isDocker = useStore((s) => s.runtime) === "docker";
   const router = useRouter();
   const [repo, setRepo] = useState<any>(null);
   usePageTitle(repo?.fullName ?? "Repository");
@@ -363,13 +365,18 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        <h3 className="text-xs font-medium text-text-muted pt-2">Pod Scaling</h3>
+        <h3 className="text-xs font-medium text-text-muted pt-2">
+          {isDocker ? "Container Scaling" : "Pod Scaling"}
+        </h3>
         <p className="text-[10px] text-text-muted/60">
-          Control how many pod replicas are created for this repo and how many agents run per pod.
+          Control how many {isDocker ? "container" : "pod"} replicas are created for this repo and
+          how many agents run per {isDocker ? "container" : "pod"}.
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-text-muted mb-1">Max pod instances</label>
+            <label className="block text-xs text-text-muted mb-1">
+              {isDocker ? "Max container instances" : "Max pod instances"}
+            </label>
             <NumberInput
               min={1}
               max={20}
@@ -378,12 +385,15 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
               fallback={1}
             />
             <p className="text-[10px] text-text-muted/60 mt-1">
-              Pod replicas for this repo. Extra pods are created when demand exceeds single-pod
-              capacity.
+              {isDocker ? "Container" : "Pod"} replicas for this repo. Extra{" "}
+              {isDocker ? "containers are" : "pods are"} created when demand exceeds single-
+              {isDocker ? "container" : "pod"} capacity.
             </p>
           </div>
           <div>
-            <label className="block text-xs text-text-muted mb-1">Max agents per pod</label>
+            <label className="block text-xs text-text-muted mb-1">
+              {isDocker ? "Max agents per container" : "Max agents per pod"}
+            </label>
             <NumberInput
               min={1}
               max={50}
@@ -392,15 +402,18 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
               fallback={2}
             />
             <p className="text-[10px] text-text-muted/60 mt-1">
-              Max concurrent agents (worktrees) in a single pod.
+              Max concurrent agents (worktrees) in a single {isDocker ? "container" : "pod"}.
             </p>
           </div>
         </div>
 
-        <h3 className="text-xs font-medium text-text-muted pt-2">Pod Resources</h3>
+        <h3 className="text-xs font-medium text-text-muted pt-2">
+          {isDocker ? "Container Resources" : "Pod Resources"}
+        </h3>
         <p className="text-[10px] text-text-muted/60">
-          Configure CPU and memory requests/limits for workspace pods. Leave empty to use cluster
-          defaults. Changes apply to newly created pods only.
+          Configure CPU and memory requests/limits for workspace {isDocker ? "containers" : "pods"}.
+          Leave empty to use {isDocker ? "default" : "cluster"} defaults. Changes apply to newly
+          created {isDocker ? "containers" : "pods"} only.
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -452,91 +465,103 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
               className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
             />
             <p className="text-[10px] text-text-muted/60 mt-1">
-              Maximum memory allowed. Must be &ge; memory request. Pod is OOM-killed if exceeded.
+              Maximum memory allowed. Must be &ge; memory request. {isDocker ? "Container" : "Pod"}{" "}
+              is OOM-killed if exceeded.
             </p>
           </div>
         </div>
 
-        <h3 className="text-xs font-medium text-text-muted pt-2">Network Egress Policy</h3>
-        <p className="text-[10px] text-text-muted/60">
-          Control outbound network access from agent pods. Requires a CNI plugin that supports
-          NetworkPolicy (Calico, Cilium, etc.).
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Egress policy</label>
-            <select
-              value={networkPolicy}
-              onChange={(e) => setNetworkPolicy(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            >
-              <option value="unrestricted">Unrestricted (default)</option>
-              <option value="restricted">Restricted</option>
-            </select>
-            <p className="text-[10px] text-text-muted/60 mt-1">
-              {networkPolicy === "restricted"
-                ? "Egress limited to DNS, AI APIs (Anthropic, OpenAI), GitHub, and the Optio API server."
-                : "No network restrictions. Agent pods can reach any endpoint."}
+        {!isDocker && (
+          <>
+            <h3 className="text-xs font-medium text-text-muted pt-2">Network Egress Policy</h3>
+            <p className="text-[10px] text-text-muted/60">
+              Control outbound network access from agent pods. Requires a CNI plugin that supports
+              NetworkPolicy (Calico, Cilium, etc.).
             </p>
-          </div>
-        </div>
-        {networkPolicy === "restricted" && (
-          <div className="p-3 rounded-md bg-bg border border-border">
-            <p className="text-xs text-text-muted mb-2">Allowed egress destinations:</p>
-            <ul className="text-xs space-y-1 text-text-muted">
-              <li>DNS (kube-dns, port 53 UDP/TCP)</li>
-              <li>HTTPS (port 443) &mdash; api.anthropic.com, api.openai.com, github.com</li>
-              <li>Intra-namespace &mdash; Optio API server (callbacks, token refresh)</li>
-            </ul>
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Egress policy</label>
+                <select
+                  value={networkPolicy}
+                  onChange={(e) => setNetworkPolicy(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                >
+                  <option value="unrestricted">Unrestricted (default)</option>
+                  <option value="restricted">Restricted</option>
+                </select>
+                <p className="text-[10px] text-text-muted/60 mt-1">
+                  {networkPolicy === "restricted"
+                    ? "Egress limited to DNS, AI APIs (Anthropic, OpenAI), GitHub, and the Optio API server."
+                    : "No network restrictions. Agent pods can reach any endpoint."}
+                </p>
+              </div>
+            </div>
+            {networkPolicy === "restricted" && (
+              <div className="p-3 rounded-md bg-bg border border-border">
+                <p className="text-xs text-text-muted mb-2">Allowed egress destinations:</p>
+                <ul className="text-xs space-y-1 text-text-muted">
+                  <li>DNS (kube-dns, port 53 UDP/TCP)</li>
+                  <li>HTTPS (port 443) &mdash; api.anthropic.com, api.openai.com, github.com</li>
+                  <li>Intra-namespace &mdash; Optio API server (callbacks, token refresh)</li>
+                </ul>
+              </div>
+            )}
+          </>
         )}
 
-        <h3 className="text-xs font-medium text-text-muted pt-2">Secret Proxy (Envoy Sidecar)</h3>
-        <p className="text-[10px] text-text-muted/60">
-          Inject an Envoy sidecar proxy that intercepts outbound API calls and adds authentication
-          headers. Agent containers never see raw secrets (GitHub token, Anthropic API key).
-        </p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={secretProxy}
-            onChange={(e) => setSecretProxy(e.target.checked)}
-            className="w-4 h-4 rounded"
-          />
-          <div>
-            <span className="text-sm">Enable secret proxy</span>
-            <p className="text-[10px] text-text-muted/60 mt-0.5">
-              Adds an Envoy sidecar to agent pods. Requires &ldquo;Restricted&rdquo; network policy
-              to prevent agents from bypassing the proxy.
+        {!isDocker && (
+          <>
+            <h3 className="text-xs font-medium text-text-muted pt-2">
+              Secret Proxy (Envoy Sidecar)
+            </h3>
+            <p className="text-[10px] text-text-muted/60">
+              Inject an Envoy sidecar proxy that intercepts outbound API calls and adds
+              authentication headers. Agent containers never see raw secrets (GitHub token,
+              Anthropic API key).
             </p>
-          </div>
-        </label>
-        {secretProxy && networkPolicy !== "restricted" && (
-          <div className="p-3 rounded-md bg-warning/10 border border-warning/30">
-            <p className="text-xs text-warning">
-              Warning: Secret proxy is most effective with a restricted network policy. Without
-              egress restrictions, agents can bypass the proxy and call APIs directly.
-            </p>
-          </div>
-        )}
-        {secretProxy && (
-          <div className="p-3 rounded-md bg-bg border border-border">
-            <p className="text-xs text-text-muted mb-2">Secrets covered by the proxy:</p>
-            <ul className="text-xs space-y-1 text-text-muted">
-              <li>
-                <code className="text-primary">GITHUB_TOKEN</code> &rarr;{" "}
-                <code>Authorization: Bearer</code> for github.com, api.github.com
-              </li>
-              <li>
-                <code className="text-primary">ANTHROPIC_API_KEY</code> &rarr;{" "}
-                <code>x-api-key</code> for api.anthropic.com
-              </li>
-            </ul>
-            <p className="text-[10px] text-text-muted/60 mt-2">
-              Note: <code>CLAUDE_CODE_OAUTH_TOKEN</code> is not covered in v1 &mdash; Claude Code
-              reads it from an env var, not via HTTP headers.
-            </p>
-          </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={secretProxy}
+                onChange={(e) => setSecretProxy(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <div>
+                <span className="text-sm">Enable secret proxy</span>
+                <p className="text-[10px] text-text-muted/60 mt-0.5">
+                  Adds an Envoy sidecar to agent pods. Requires &ldquo;Restricted&rdquo; network
+                  policy to prevent agents from bypassing the proxy.
+                </p>
+              </div>
+            </label>
+            {secretProxy && networkPolicy !== "restricted" && (
+              <div className="p-3 rounded-md bg-warning/10 border border-warning/30">
+                <p className="text-xs text-warning">
+                  Warning: Secret proxy is most effective with a restricted network policy. Without
+                  egress restrictions, agents can bypass the proxy and call APIs directly.
+                </p>
+              </div>
+            )}
+            {secretProxy && (
+              <div className="p-3 rounded-md bg-bg border border-border">
+                <p className="text-xs text-text-muted mb-2">Secrets covered by the proxy:</p>
+                <ul className="text-xs space-y-1 text-text-muted">
+                  <li>
+                    <code className="text-primary">GITHUB_TOKEN</code> &rarr;{" "}
+                    <code>Authorization: Bearer</code> for github.com, api.github.com
+                  </li>
+                  <li>
+                    <code className="text-primary">ANTHROPIC_API_KEY</code> &rarr;{" "}
+                    <code>x-api-key</code> for api.anthropic.com
+                  </li>
+                </ul>
+                <p className="text-[10px] text-text-muted/60 mt-2">
+                  Note: <code>CLAUDE_CODE_OAUTH_TOKEN</code> is not covered in v1 &mdash; Claude
+                  Code reads it from an env var, not via HTTP headers.
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         <h3 className="text-xs font-medium text-text-muted pt-2">Off-Peak Scheduling</h3>
@@ -568,9 +593,16 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
           <div>
             <span className="text-sm">Enable Docker-in-Docker</span>
             <p className="text-[10px] text-text-muted/60 mt-0.5">
-              Allow agents to run <code>docker build</code> and <code>docker run</code> inside pods.
-              Uses K8s user namespace isolation (<code>hostUsers: false</code>) with SYS_ADMIN and
-              NET_ADMIN capabilities scoped to the user namespace &mdash; no privileged mode needed.
+              Allow agents to run <code>docker build</code> and <code>docker run</code> inside{" "}
+              {isDocker ? "containers" : "pods"}.
+              {!isDocker && (
+                <>
+                  {" "}
+                  Uses K8s user namespace isolation (<code>hostUsers: false</code>) with SYS_ADMIN
+                  and NET_ADMIN capabilities scoped to the user namespace &mdash; no privileged mode
+                  needed.
+                </>
+              )}
             </p>
           </div>
         </label>
@@ -1349,8 +1381,8 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
             <div>
               <label className="block text-xs text-text-muted mb-1">Setup commands</label>
               <p className="text-[10px] text-text-muted/60 mb-1.5">
-                Shell commands run inside the pod after cloning. Use this to install dependencies,
-                build tools, or configure the environment.
+                Shell commands run inside the {isDocker ? "container" : "pod"} after cloning. Use
+                this to install dependencies, build tools, or configure the environment.
               </p>
               <textarea
                 value={setupCommands}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useStore } from "@/hooks/use-store";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { api } from "@/lib/api-client";
 import Link from "next/link";
@@ -39,7 +40,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ClusterPage() {
-  usePageTitle("Cluster");
+  const isDocker = useStore((s) => s.runtime) === "docker";
+  usePageTitle(isDocker ? "Infrastructure" : "Cluster");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"pods" | "events" | "services">("pods");
@@ -79,7 +81,9 @@ export default function ClusterPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Cluster</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {isDocker ? "Infrastructure" : "Cluster"}
+        </h1>
         <button onClick={refresh} className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted">
           <RefreshCw className="w-4 h-4" />
         </button>
@@ -161,22 +165,25 @@ export default function ClusterPage() {
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-border">
-        {(["pods", "events", "services"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "px-4 py-2 text-sm border-b-2 transition-colors capitalize",
-              tab === t
-                ? "border-primary text-primary"
-                : "border-transparent text-text-muted hover:text-text",
-            )}
-          >
-            {t} {t === "pods" && `(${pods.length})`}
-            {t === "events" && `(${events.length})`}
-            {t === "services" && `(${services.length})`}
-          </button>
-        ))}
+        {(["pods", "events", "services"] as const)
+          .filter((t) => !isDocker || t === "pods")
+          .map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={cn(
+                "px-4 py-2 text-sm border-b-2 transition-colors capitalize",
+                tab === t
+                  ? "border-primary text-primary"
+                  : "border-transparent text-text-muted hover:text-text",
+              )}
+            >
+              {t === "pods" ? (isDocker ? "containers" : t) : t}{" "}
+              {t === "pods" && `(${pods.length})`}
+              {t === "events" && `(${events.length})`}
+              {t === "services" && `(${services.length})`}
+            </button>
+          ))}
       </div>
 
       {/* Pods tab */}

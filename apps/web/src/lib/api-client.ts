@@ -175,7 +175,12 @@ export const api = {
   },
 
   // Health
-  getHealth: () => request<{ healthy: boolean; checks: Record<string, boolean> }>("/api/health"),
+  getHealth: () =>
+    request<{
+      healthy: boolean;
+      checks: Record<string, boolean>;
+      runtime?: "docker" | "kubernetes";
+    }>("/api/health"),
 
   // Tickets (Phase 3)
   syncTickets: () => request<{ synced: number }>("/api/tickets/sync", { method: "POST" }),

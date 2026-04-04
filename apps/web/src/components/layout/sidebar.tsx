@@ -22,18 +22,26 @@ import {
 import { UserMenu } from "./user-menu";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { useOptioChatStore } from "@/hooks/use-optio-chat";
+import { useStore } from "@/hooks/use-store";
 
-const MAIN_NAV = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/tasks", label: "Tasks", icon: ListTodo },
-  { href: "/sessions", label: "Sessions", icon: Terminal },
-  { href: "/repos", label: "Repos", icon: FolderGit2 },
-  { href: "/cluster", label: "Cluster", icon: Server },
-  { href: "/costs", label: "Costs", icon: DollarSign },
-  { href: "/schedules", label: "Schedules", icon: Clock },
-  { href: "/templates", label: "Templates", icon: FileText },
-  { href: "/workflows", label: "Workflows", icon: GitBranch },
-];
+function useMainNav() {
+  const runtime = useStore((s) => s.runtime);
+  return [
+    { href: "/", label: "Overview", icon: LayoutDashboard },
+    { href: "/tasks", label: "Tasks", icon: ListTodo },
+    { href: "/sessions", label: "Sessions", icon: Terminal },
+    { href: "/repos", label: "Repos", icon: FolderGit2 },
+    {
+      href: "/cluster",
+      label: runtime === "docker" ? "Infrastructure" : "Cluster",
+      icon: Server,
+    },
+    { href: "/costs", label: "Costs", icon: DollarSign },
+    { href: "/schedules", label: "Schedules", icon: Clock },
+    { href: "/templates", label: "Templates", icon: FileText },
+    { href: "/workflows", label: "Workflows", icon: GitBranch },
+  ];
+}
 
 const SECONDARY_NAV = [
   { href: "/secrets", label: "Secrets", icon: KeyRound },
@@ -82,6 +90,7 @@ const STATUS_DOT_COLORS: Record<string, string> = {
 export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => void }) {
   const pathname = usePathname();
   const optioChat = useOptioChatStore();
+  const mainNav = useMainNav();
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
@@ -112,7 +121,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       </div>
       <nav className="flex-1 px-2.5 py-3 overflow-y-auto">
         <div className="space-y-0.5">
-          {MAIN_NAV.map((item) => (
+          {mainNav.map((item) => (
             <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={onClose} />
           ))}
         </div>
