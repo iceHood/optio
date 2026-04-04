@@ -64,7 +64,9 @@ export default function SetupPage() {
   const [openaiError, setOpenaiError] = useState("");
 
   // Step 3: Claude auth mode
-  const [claudeAuthMode, setClaudeAuthMode] = useState<"api-key" | "oauth-token">("oauth-token");
+  const [claudeAuthMode, setClaudeAuthMode] = useState<"api-key" | "oauth-token" | "claude-cli">(
+    "oauth-token",
+  );
   const [oauthToken, setOauthToken] = useState("");
   const [oauthTokenDetected, setOauthTokenDetected] = useState(false);
   const [oauthChecking, setOauthChecking] = useState(false);
@@ -151,7 +153,9 @@ export default function SetupPage() {
   const claudeReady =
     claudeAuthMode === "oauth-token"
       ? oauthTokenDetected || oauthToken.trim().length > 0
-      : anthropicValidated;
+      : claudeAuthMode === "claude-cli"
+        ? true // claude-cli uses CLI's own auth, no key needed
+        : anthropicValidated;
 
   const codexReady =
     codexAuthMode === "app-server" ? codexAppServerUrl.trim().length > 0 : openaiValidated;
@@ -777,6 +781,42 @@ export default function SetupPage() {
                               <CheckCircle className="w-3 h-3" /> API key valid
                             </p>
                           )}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <label
+                    className={cn(
+                      "flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors",
+                      claudeAuthMode === "claude-cli"
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-text-muted",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="claude-auth"
+                      checked={claudeAuthMode === "claude-cli"}
+                      onChange={() => setClaudeAuthMode("claude-cli")}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium">
+                        Use Claude CLI auth (Docker Compose)
+                      </span>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        Uses Claude Code&apos;s own authentication from the host machine. No API key
+                        or OAuth token needed — ideal for Docker Compose deployments with a Pro/Max
+                        subscription. Requires mounting ~/.claude into worker containers via
+                        OPTIO_AGENT_EXTRA_VOLUMES.
+                      </p>
+                      {claudeAuthMode === "claude-cli" && (
+                        <div className="mt-2">
+                          <p className="text-xs text-success flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> No configuration needed — CLI
+                            handles authentication
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1415,7 +1455,11 @@ export default function SetupPage() {
                     <CheckCircle className="w-4 h-4 text-success" />
                     <span>
                       Claude Code:{" "}
-                      {claudeAuthMode === "oauth-token" ? "Max/Pro subscription" : "API key"}
+                      {claudeAuthMode === "oauth-token"
+                        ? "Max/Pro subscription"
+                        : claudeAuthMode === "claude-cli"
+                          ? "CLI auth (Docker Compose)"
+                          : "API key"}
                     </span>
                   </div>
                 )}

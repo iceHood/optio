@@ -53,9 +53,10 @@ export async function setupRoutes(app: FastifyInstance) {
       // GitHub App configured at deployment level satisfies the GitHub token requirement
       const hasGithubToken = secretNames.includes("GITHUB_TOKEN") || isGitHubAppConfigured();
 
-      // Check if using Max subscription or OAuth token mode
+      // Check if using Max subscription, OAuth token, or claude-cli mode
       let usingSubscription = false;
       let hasOauthToken = false;
+      let usingClaudeCli = false;
       try {
         const authMode = await retrieveSecret("CLAUDE_AUTH_MODE").catch(() => null);
         if (authMode === "max-subscription") {
@@ -63,6 +64,10 @@ export async function setupRoutes(app: FastifyInstance) {
         }
         if (authMode === "oauth-token") {
           hasOauthToken = secretNames.includes("CLAUDE_CODE_OAUTH_TOKEN");
+        }
+        if (authMode === "claude-cli") {
+          // claude-cli mode: no API key needed, CLI handles auth via ~/.claude/
+          usingClaudeCli = true;
         }
       } catch {}
 
@@ -83,6 +88,7 @@ export async function setupRoutes(app: FastifyInstance) {
         hasOpenAIKey ||
         usingSubscription ||
         hasOauthToken ||
+        usingClaudeCli ||
         hasCodexAppServer ||
         hasCopilotToken;
 
@@ -100,6 +106,7 @@ export async function setupRoutes(app: FastifyInstance) {
           githubToken: { done: hasGithubToken, label: "GitHub token" },
           anthropicKey: { done: hasAnthropicKey, label: "Anthropic API key" },
           openaiKey: { done: hasOpenAIKey, label: "OpenAI API key" },
+          claudeCli: { done: usingClaudeCli, label: "Claude CLI auth (Pro/Max)" },
           codexAppServer: { done: hasCodexAppServer, label: "Codex app-server" },
           copilotToken: { done: hasCopilotToken, label: "GitHub Copilot token" },
           anyAgentKey: { done: hasAnyAgentKey, label: "At least one agent API key" },
