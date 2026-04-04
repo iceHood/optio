@@ -88,6 +88,7 @@ export async function searchMarketplace(
     });
   }
 
+  results.sort((a, b) => b.stars - a.stars);
   return results;
 }
 
