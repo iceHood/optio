@@ -319,11 +319,23 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         </section>
 
         {/* MCP Servers */}
-        {allMcpServers.length > 0 && (
-          <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-            <h2 className="text-sm font-medium text-text-muted uppercase tracking-wider">
-              MCP Servers
-            </h2>
+        <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+          <h2 className="text-sm font-medium text-text-muted uppercase tracking-wider">
+            MCP Servers
+          </h2>
+          <p className="text-xs text-text-muted">
+            Only the selected MCP servers will be available to this agent. No repo/global servers
+            are inherited.
+          </p>
+          {allMcpServers.length === 0 ? (
+            <p className="text-xs text-text-muted py-2">
+              No MCP servers configured.{" "}
+              <Link href="/repos" className="text-primary hover:underline">
+                Add MCP servers
+              </Link>{" "}
+              in repo settings first.
+            </p>
+          ) : (
             <div className="space-y-1">
               {allMcpServers.map((s: any) => (
                 <label
@@ -341,15 +353,27 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                 </label>
               ))}
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
         {/* Skill Sets */}
-        {allSkillSets.length > 0 && (
-          <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-            <h2 className="text-sm font-medium text-text-muted uppercase tracking-wider">
-              Skill Sets
-            </h2>
+        <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+          <h2 className="text-sm font-medium text-text-muted uppercase tracking-wider">
+            Skill Sets
+          </h2>
+          <p className="text-xs text-text-muted">
+            Only the selected skill sets will be loaded for this agent. No repo/global skills are
+            inherited.
+          </p>
+          {allSkillSets.length === 0 ? (
+            <p className="text-xs text-text-muted py-2">
+              No skill sets configured.{" "}
+              <Link href="/repos" className="text-primary hover:underline">
+                Create skill sets
+              </Link>{" "}
+              first.
+            </p>
+          ) : (
             <div className="space-y-1">
               {allSkillSets.map((s: any) => (
                 <label
@@ -369,8 +393,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                 </label>
               ))}
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
         {/* Advanced: Prompt Template */}
         <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { api } from "@/lib/api-client";
 import Link from "next/link";
@@ -21,6 +22,7 @@ const MODEL_LABELS: Record<string, string> = {
 
 export default function AgentsPage() {
   usePageTitle("Agents");
+  const router = useRouter();
   const [agents, setAgents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -52,27 +54,16 @@ export default function AgentsPage() {
     if (!form.name.trim()) return;
     setSubmitting(true);
     try {
-      await api.createAgent({
+      const res = await api.createAgent({
         name: form.name,
         description: form.description || undefined,
         agentType: form.agentType,
         model: form.model || undefined,
         effort: form.effort || undefined,
         maxTurns: form.maxTurns ? parseInt(form.maxTurns) : undefined,
-        imagePreset: form.imagePreset || undefined,
       });
-      toast.success("Agent created");
-      setForm({
-        name: "",
-        description: "",
-        agentType: "claude-code",
-        model: "sonnet",
-        effort: "high",
-        maxTurns: "",
-        imagePreset: "",
-      });
-      setShowForm(false);
-      loadAgents();
+      toast.success("Agent created — configure MCP servers and skills");
+      router.push(`/agents/${res.agent.id}`);
     } catch (err: any) {
       toast.error("Failed to create agent", { description: err.message });
     } finally {
