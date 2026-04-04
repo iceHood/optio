@@ -320,6 +320,21 @@ export function startTaskWorker() {
           log.info({ count: skills.length }, "Injecting custom skills");
         }
 
+        // Marketplace skills: install via npx skills add in the container
+        try {
+          const { getInstallCommands } = await import("../services/marketplace-skill-service.js");
+          const skillInstallCommands = await getInstallCommands(task.repoUrl);
+          if (skillInstallCommands.length > 0) {
+            agentConfig.env.OPTIO_SKILL_INSTALL_COMMANDS = skillInstallCommands.join(" && ");
+            log.info(
+              { count: skillInstallCommands.length },
+              "Injecting marketplace skill install commands",
+            );
+          }
+        } catch {
+          // marketplace-skill-service not available
+        }
+
         // Encode setup files
         if (agentConfig.setupFiles && agentConfig.setupFiles.length > 0) {
           agentConfig.env.OPTIO_SETUP_FILES = Buffer.from(

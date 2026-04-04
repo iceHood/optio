@@ -995,10 +995,14 @@ export const api = {
       results: Array<{ source: string; name: string; description: string; installs: number }>;
     }>("/api/skills/marketplace/search", { method: "POST", body: JSON.stringify({ query }) }),
 
-  installMarketplaceSkill: (source: string, skillPath?: string) =>
-    request<{ skill: any }>("/api/skills/marketplace/install", {
+  installMarketplaceSkill: (id: string) =>
+    request<{ skill: any }>(`/api/skills/marketplace/${id}/install`, {
       method: "POST",
-      body: JSON.stringify({ source, skillPath }),
+    }),
+
+  uninstallMarketplaceSkill: (id: string) =>
+    request<void>(`/api/skills/marketplace/${id}/uninstall`, {
+      method: "POST",
     }),
 
   listMarketplaceSkills: () => request<{ skills: any[] }>("/api/skills/marketplace"),

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS "marketplace_skills" (
   "prompt" text NOT NULL DEFAULT '',
   "reference_files" jsonb,
   "installs" integer DEFAULT 0,
+  "installed" boolean NOT NULL DEFAULT false,
   "source_commit" text,
   "last_synced_at" timestamp with time zone,
   "workspace_id" uuid,
@@ -61,3 +62,7 @@ CREATE TABLE IF NOT EXISTS "repo_skill_sets" (
 CREATE INDEX IF NOT EXISTS "repo_skill_sets_repo_url_idx" ON "repo_skill_sets" USING btree ("repo_url");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "repo_skill_sets_set_id_idx" ON "repo_skill_sets" USING btree ("skill_set_id");
+--> statement-breakpoint
+
+-- Add files column to custom_skills for zip/skill archive contents
+ALTER TABLE "custom_skills" ADD COLUMN IF NOT EXISTS "files" jsonb;

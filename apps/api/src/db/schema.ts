@@ -570,7 +570,8 @@ export const customSkills = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     description: text("description"),
-    prompt: text("prompt").notNull(), // markdown content
+    prompt: text("prompt").notNull(), // markdown content (SKILL.md body)
+    files: jsonb("files").$type<Array<{ path: string; content: string }>>(), // all files from zip/skill archive
     scope: text("scope").notNull().default("global"), // "global" or repo URL
     repoUrl: text("repo_url"), // null = global, set = repo-scoped
     workspaceId: uuid("workspace_id"),
@@ -690,6 +691,7 @@ export const marketplaceSkills = pgTable(
     prompt: text("prompt").notNull(), // markdown content from SKILL.md
     referenceFiles: jsonb("reference_files").$type<Array<{ path: string; content: string }>>(),
     installs: integer("installs").default(0), // install count from skills.sh
+    installed: boolean("installed").notNull().default(false), // marked for npx skills add in containers
     sourceCommit: text("source_commit"), // git commit SHA for version tracking
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     workspaceId: uuid("workspace_id"),

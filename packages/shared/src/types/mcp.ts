@@ -71,6 +71,7 @@ export interface MarketplaceSkillConfig {
   prompt: string;
   referenceFiles?: Array<{ path: string; content: string }> | null;
   installs?: number | null;
+  installed?: boolean;
   sourceCommit?: string | null;
   lastSyncedAt?: Date | null;
   workspaceId?: string | null;

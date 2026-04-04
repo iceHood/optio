@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import * as skillSetService from "../services/skill-set-service.js";
 import * as marketplaceService from "../services/marketplace-skill-service.js";
-import { retrieveSecret } from "../services/secret-service.js";
 
 export async function skillSetRoutes(app: FastifyInstance) {
   // ── Skill Sets CRUD ─────────────────────────────────────────────────────
@@ -125,30 +124,18 @@ export async function skillSetRoutes(app: FastifyInstance) {
     reply.send({ skills });
   });
 
-  // Install: fetch SKILL.md content from GitHub and store it
-  const installSchema = z.object({
-    source: z.string().min(1), // "owner/repo@skill-name"
-    skillPath: z.string().optional(),
+  // Install: just mark as installed (actual install via npx skills add in container)
+  app.post("/api/skills/marketplace/:id/install", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const skill = await marketplaceService.installSkill(id);
+    reply.send({ skill });
   });
 
-  app.post("/api/skills/marketplace/install", async (req, reply) => {
-    const parsed = installSchema.safeParse(req.body);
-    if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0].message });
-    const wsId = req.user?.workspaceId || null;
-    const ghToken = await retrieveSecret("GITHUB_TOKEN").catch(() => null);
-
-    // Parse "owner/repo@skill" format
-    const [ownerRepo, skillName] = parsed.data.source.split("@");
-    // Don't guess the path — let installFromGitHub search the repo tree
-    // for the SKILL.md matching the skill name
-    const skill = await marketplaceService.installFromGitHub(
-      ownerRepo,
-      parsed.data.skillPath,
-      wsId,
-      ghToken ?? undefined,
-      skillName,
-    );
-    reply.status(201).send({ skill });
+  // Uninstall
+  app.post("/api/skills/marketplace/:id/uninstall", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await marketplaceService.uninstallSkill(id);
+    reply.status(204).send();
   });
 
   app.delete("/api/skills/marketplace/:id", async (req, reply) => {

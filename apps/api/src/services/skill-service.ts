@@ -116,13 +116,13 @@ export async function getSkillsForTask(
     }
   }
 
-  // Also include skills from skill sets assigned to this repo
+  // Also include custom skills from skill sets assigned to this repo
+  // (Marketplace skills are handled separately via npx skills add in the container)
   try {
-    const { getSkillsFromSkillSets } = await import("./skill-set-service.js");
-    const skillSetSkills = await getSkillsFromSkillSets(repoUrl);
+    const { getCustomSkillsFromSkillSets } = await import("./skill-set-service.js");
+    const skillSetSkills = await getCustomSkillsFromSkillSets(repoUrl);
     for (const skill of skillSetSkills) {
       if (!byName.has(skill.name)) {
-        // Skill set skills have lower priority than direct assignments
         byName.set(skill.name, {
           id: "",
           name: skill.name,
@@ -131,8 +131,7 @@ export async function getSkillsForTask(
           enabled: true,
           createdAt: new Date(),
           updatedAt: new Date(),
-          _referenceFiles: skill.referenceFiles,
-        } as CustomSkillConfig & { _referenceFiles?: unknown });
+        });
       }
     }
   } catch {
@@ -143,33 +142,33 @@ export async function getSkillsForTask(
 }
 
 /**
- * Build setup files for custom skills to be written to .claude/commands/ in the worktree.
- * Also includes reference files from marketplace skills (via skill sets).
+ * Build setup files for custom skills.
+ * If the skill has a `files` array (from zip/skill upload), all files are included.
+ * Otherwise, the prompt is written as a single .claude/commands/{name}.md file.
  */
 export function buildSkillSetupFiles(
   skills: CustomSkillConfig[],
 ): Array<{ path: string; content: string }> {
-  const files: Array<{ path: string; content: string }> = [];
+  const result: Array<{ path: string; content: string }> = [];
   for (const skill of skills) {
-    files.push({
-      path: `.claude/commands/${skill.name}.md`,
-      content: skill.prompt,
-    });
-    // Include reference files from marketplace skills (attached via _referenceFiles)
-    const refs = (skill as any)._referenceFiles as
-      | Array<{ path: string; content: string }>
-      | null
-      | undefined;
-    if (refs) {
-      for (const ref of refs) {
-        files.push({
-          path: `.claude/commands/${skill.name}/${ref.path}`,
-          content: ref.content,
+    const skillFiles = (skill as any).files as Array<{ path: string; content: string }> | null;
+    if (skillFiles && skillFiles.length > 0) {
+      // Full skill archive: write all files under the skill's directory
+      for (const f of skillFiles) {
+        result.push({
+          path: `.claude/commands/${skill.name}/${f.path}`,
+          content: f.content,
         });
       }
+    } else {
+      // Simple text skill: single markdown file
+      result.push({
+        path: `.claude/commands/${skill.name}.md`,
+        content: skill.prompt,
+      });
     }
   }
-  return files;
+  return result;
 }
 
 function mapRow(row: typeof customSkills.$inferSelect): CustomSkillConfig {

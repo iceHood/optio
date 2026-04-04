@@ -182,7 +182,7 @@ export async function removeSkillSetFromRepo(repoUrl: string, skillSetId: string
 
 // ── Resolve all skills for a repo (via skill sets) ──────────────────────────
 
-export async function getSkillsFromSkillSets(repoUrl: string): Promise<
+export async function getCustomSkillsFromSkillSets(repoUrl: string): Promise<
   Array<{
     name: string;
     prompt: string;

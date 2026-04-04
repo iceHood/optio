@@ -1226,11 +1226,11 @@ function MarketplaceTab() {
     );
   });
 
-  const handleInstall = async (source: string) => {
-    setInstalling(source);
+  const handleInstall = async (id: string) => {
+    setInstalling(id);
     try {
-      const res = await api.installMarketplaceSkill(source);
-      setSkills((prev) => prev.map((s) => (s.source === source ? res.skill : s)));
+      const res = await api.installMarketplaceSkill(id);
+      setSkills((prev) => prev.map((s) => (s.id === id ? res.skill : s)));
       toast.success("Skill installed");
     } catch (err) {
       toast.error("Install failed", {
@@ -1321,7 +1321,7 @@ function MarketplaceTab() {
           ) : (
             <div className="space-y-2">
               {filteredSkills.map((skill) => {
-                const isInstalled = !!skill.prompt;
+                const isInstalled = !!skill.installed;
                 const isFromMarketplace = isMarketplaceSource(skill.source || "");
                 return (
                   <div
@@ -1369,11 +1369,11 @@ function MarketplaceTab() {
                     <div className="flex items-center gap-1.5 shrink-0">
                       {!isInstalled && (
                         <button
-                          onClick={() => handleInstall(skill.source)}
-                          disabled={installing === skill.source}
+                          onClick={() => handleInstall(skill.id)}
+                          disabled={installing === skill.id}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-white hover:bg-primary-hover disabled:opacity-50"
                         >
-                          {installing === skill.source ? (
+                          {installing === skill.id ? (
                             <Loader2 className="w-3 h-3 animate-spin" />
                           ) : (
                             <Download className="w-3 h-3" />

@@ -656,6 +656,12 @@ export async function execTaskInRepoPod(
     `if [ -n "\${GITHUB_TOKEN:-}" ]; then`,
     `  echo "\${GITHUB_TOKEN}" | gh auth login --with-token 2>/dev/null && gh auth setup-git 2>/dev/null && echo "[optio] gh CLI authenticated + git credential helper configured" || true`,
     `fi`,
+    // Install marketplace skills via npx skills add (if any)
+    `if [ -n "\${OPTIO_SKILL_INSTALL_COMMANDS:-}" ]; then`,
+    `  echo "[optio] Installing marketplace skills..."`,
+    `  eval "\${OPTIO_SKILL_INSTALL_COMMANDS}"`,
+    `  echo "[optio] Marketplace skills installed"`,
+    `fi`,
     // EXIT trap: clean up worktrees AND kill any orphaned child processes.
     // Without the process kill, hung child processes (e.g. interactive gh auth login)
     // keep the exec session's file descriptors open, preventing stream closure.
