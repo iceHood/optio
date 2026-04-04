@@ -216,49 +216,59 @@ export async function installFromGitHub(
     }
   }
 
-  // Derive skill name
-  const name = parsed.name ?? skillDir.split("/").pop() ?? source.split("/")[1] ?? "unknown";
+  // Derive skill name from SKILL.md frontmatter or directory name
+  const derivedName = parsed.name ?? skillDir.split("/").pop() ?? source.split("/")[1] ?? "unknown";
 
-  // Upsert into DB
-  const existing = await db
+  // The full source key used by syncCatalog is "owner/repo@skillName"
+  const fullSourceKey = skillName ? `${source}@${skillName}` : source;
+
+  // Try to find existing record: first by full source key (from sync), then by repo+path
+  let existing = await db
     .select()
     .from(marketplaceSkills)
-    .where(and(eq(marketplaceSkills.source, source), eq(marketplaceSkills.skillPath, skillPath)));
+    .where(eq(marketplaceSkills.source, fullSourceKey));
+
+  if (existing.length === 0) {
+    existing = await db
+      .select()
+      .from(marketplaceSkills)
+      .where(and(eq(marketplaceSkills.source, source), eq(marketplaceSkills.skillPath, skillPath)));
+  }
+
+  const updateData = {
+    name: derivedName,
+    description: parsed.description ?? null,
+    prompt: parsed.body,
+    skillPath,
+    referenceFiles: referenceFiles.length > 0 ? referenceFiles : null,
+    sourceCommit,
+    lastSyncedAt: new Date(),
+    updatedAt: new Date(),
+  };
 
   if (existing.length > 0) {
     const [updated] = await db
       .update(marketplaceSkills)
-      .set({
-        name,
-        description: parsed.description ?? null,
-        prompt: parsed.body,
-        referenceFiles: referenceFiles.length > 0 ? referenceFiles : null,
-        sourceCommit,
-        lastSyncedAt: new Date(),
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(marketplaceSkills.id, existing[0].id))
       .returning();
-    logger.info({ source, name }, "Updated marketplace skill");
+    logger.info(
+      { source: fullSourceKey, name: derivedName },
+      "Installed marketplace skill (updated existing)",
+    );
     return updated as MarketplaceSkillConfig;
   }
 
   const [created] = await db
     .insert(marketplaceSkills)
     .values({
-      source,
-      skillPath,
-      name,
-      description: parsed.description ?? null,
-      prompt: parsed.body,
-      referenceFiles: referenceFiles.length > 0 ? referenceFiles : null,
-      sourceCommit,
-      lastSyncedAt: new Date(),
+      source: fullSourceKey,
+      ...updateData,
       workspaceId: workspaceId ?? null,
     })
     .returning();
 
-  logger.info({ source, name }, "Installed marketplace skill");
+  logger.info({ source: fullSourceKey, name: derivedName }, "Installed marketplace skill (new)");
   return created as MarketplaceSkillConfig;
 }
 
