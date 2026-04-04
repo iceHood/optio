@@ -143,6 +143,26 @@ Subtasks have `subtaskOrder` for ordering and `blocksParent` to indicate whether
 
 Routes: `GET /api/tasks/:id/subtasks`, `POST /api/tasks/:id/subtasks`, `GET /api/tasks/:id/subtasks/status`.
 
+### Agent-centric pipeline
+
+Agents are reusable configuration bundles that can be assigned to pipeline stages per repo. This replaces the old approach of scattering agent config across `repos` table columns.
+
+**Agent definition** (`agents` table): name, agentType (claude-code/codex/copilot), model, contextWindow, thinking, effort, imagePreset, customDockerfile, extraPackages, setupCommands, maxTurns, promptTemplate. Agents can also have associated MCP servers (`agent_mcp_servers`) and skill sets (`agent_skill_sets`).
+
+**Pipeline stages** (`repo_pipeline_stages` table): Each repo can define an ordered list of stages (e.g., coding → review → qa), each optionally assigned an agent. When no agent is assigned, the stage falls back to repo-level config.
+
+**Config resolution** (`agent-config-resolver.ts`): Priority chain:
+
+1. Task has explicit `agentId` → load that agent
+2. Repo has a pipeline stage matching the task type → use the stage's agent
+3. Fallback → build config from repo settings (100% backward compatible)
+
+**Stage progression** (`pipeline-stage-service.ts`): When a stage completes, `triggerNextStage()` finds the next enabled stage and creates a blocking subtask with the appropriate agent. For the `review` stage, it delegates to the existing `review-service.ts`.
+
+**Task-worker integration**: The worker calls `resolveAgentConfig()` early and uses the resolved config for model, image preset, MCP servers, skills, max turns, extra packages, and setup commands. The resolved `agentId` is stored on the task record for audit.
+
+Routes: `GET/POST /api/agents`, `GET/PATCH/DELETE /api/agents/:id`, `GET/PUT /api/agents/:id/mcp-servers`, `GET/PUT /api/agents/:id/skill-sets`, `GET/PUT /api/repos/:id/pipeline`.
+
 ### Code review agent
 
 The review system (`review-service.ts`) launches a review agent as a blocking subtask of the original coding task:
@@ -150,9 +170,9 @@ The review system (`review-service.ts`) launches a review agent as a blocking su
 1. Triggered automatically by the PR watcher (on CI pass or PR open, per `repos.reviewTrigger`) or manually via `POST /api/tasks/:id/review`
 2. Creates a review subtask with `taskType: "review"`, `blocksParent: true`
 3. Builds a review-specific prompt using `repos.reviewPromptTemplate` (or default) with variables: `{{PR_NUMBER}}`, `{{TASK_FILE}}`, `{{REPO_NAME}}`, `{{TASK_TITLE}}`, `{{TEST_COMMAND}}`
-4. Uses `repos.reviewModel` (defaults to "sonnet") — allows using a cheaper model for reviews
+4. Uses the pipeline review agent's model if configured, otherwise `repos.reviewModel` (defaults to "sonnet")
 5. The review task runs in the same repo pod, scoped to the PR branch
-6. Parent task waits for the review to complete before advancing
+6. Parent task waits for the review to complete before advancing to the next pipeline stage (if any)
 
 ### PR watcher
 
@@ -307,26 +327,27 @@ apps/
       routes/         health, tasks, subtasks, bulk, secrets, repos, issues, tickets, setup, auth,
                       cluster, resume, prompt-templates, analytics, webhooks, comments, schedules,
                       slack, task-templates, workspaces, dependencies, workflows, mcp-servers,
-                      sessions, skills
+                      sessions, skills, agents
       services/       task-service, repo-pool-service, secret-service, auth-service, container-service,
                       prompt-template-service, repo-service, repo-detect-service, review-service,
                       subtask-service, ticket-sync-service, event-bus, agent-event-parser,
                       session-service, interactive-session-service, workspace-service, webhook-service,
                       comment-service, schedule-service, slack-service, task-template-service,
                       workflow-service, dependency-service, mcp-server-service, skill-service,
+                      agent-service, agent-config-resolver, pipeline-stage-service,
                       oauth/ (github, google, gitlab)
       plugins/        auth (session validation middleware)
       workers/        task-worker (main job processor), pr-watcher-worker, repo-cleanup-worker,
                       ticket-sync-worker, webhook-worker, schedule-worker
       ws/             log-stream (per-task), events (global), session-terminal, session-chat, ws-auth
-      db/             schema.ts (Drizzle ~26 tables), client.ts, migrations/ (~28 migrations)
+      db/             schema.ts (Drizzle ~30 tables), client.ts, migrations/ (~41 migrations)
     drizzle.config.ts
   web/
     src/
       app/            Pages: / (overview), /tasks, /tasks/new, /tasks/[id], /repos, /repos/[id],
                       /cluster, /cluster/[id], /secrets, /settings, /setup, /costs, /login,
                       /sessions, /sessions/[id], /templates, /workspace-settings, /schedules,
-                      /workflows
+                      /workflows, /agents, /agents/[id]
       components/     task-card, task-list, log-viewer, web-terminal, event-timeline, state-badge,
                       skeleton, session-terminal, session-chat, split-pane, activity-feed,
                       pipeline-timeline,
@@ -354,11 +375,11 @@ scripts/              setup-local.sh, update-local.sh, repo-init.sh, agent-entry
 
 ## Database Schema
 
-~26 tables (Drizzle, ~28 migrations). Key tables:
+~30 tables (Drizzle, ~41 migrations). Key tables:
 
 **Core:**
 
-- **tasks** — id, title, prompt, repoUrl, repoBranch, state (enum), agentType, containerId, sessionId, prUrl, prNumber, prState, prChecksStatus, prReviewStatus, prReviewComments, resultSummary, costUsd, inputTokens, outputTokens, modelUsed, errorMessage, ticketSource, ticketExternalId, metadata (jsonb), retryCount, maxRetries, priority, parentTaskId, taskType, subtaskOrder, blocksParent, worktreeState, lastPodId, workspaceId, createdBy, timestamps
+- **tasks** — id, title, prompt, repoUrl, repoBranch, state (enum), agentType, containerId, sessionId, prUrl, prNumber, prState, prChecksStatus, prReviewStatus, prReviewComments, resultSummary, costUsd, inputTokens, outputTokens, modelUsed, errorMessage, ticketSource, ticketExternalId, metadata (jsonb), retryCount, maxRetries, priority, parentTaskId, taskType, subtaskOrder, blocksParent, worktreeState, lastPodId, agentId, pipelineStageId, workspaceId, createdBy, timestamps
 - **task_events** — id, taskId, fromState, toState, trigger, message, userId, createdAt
 - **task_logs** — id, taskId, stream, content, logType, metadata (jsonb), timestamp
 - **task_comments** — id, taskId, userId, content, timestamps
@@ -394,6 +415,13 @@ scripts/              setup-local.sh, update-local.sh, repo-init.sh, agent-entry
 - **workflow_templates** / **workflow_runs** — multi-step workflow automation
 - **mcp_servers** — MCP server configs (global or per-repo)
 - **custom_skills** — custom agent skills/commands
+
+**Agent Pipeline:**
+
+- **agents** — id, name, description, agentType, model, contextWindow, thinking, effort, imagePreset, customDockerfile, extraPackages, setupCommands, maxTurns, promptTemplate, workspaceId, timestamps
+- **agent_mcp_servers** — id, agentId, mcpServerId (join table, cascade delete)
+- **agent_skill_sets** — id, agentId, skillSetId (join table, cascade delete)
+- **repo_pipeline_stages** — id, repoId, stage, stageOrder, agentId (set null on delete), enabled, timestamps
 
 ## Helm Chart
 
@@ -526,6 +554,10 @@ Key routes beyond basic CRUD:
 - `GET /api/schedules` — scheduled/recurring task management
 - `GET /api/mcp-servers` — MCP server configuration
 - `GET /api/skills` — custom skill management
+- `GET /api/agents` / `POST /api/agents` — agent profile CRUD
+- `GET/PUT /api/agents/:id/mcp-servers` — agent MCP server associations
+- `GET/PUT /api/agents/:id/skill-sets` — agent skill set associations
+- `GET/PUT /api/repos/:id/pipeline` — repo pipeline stage configuration
 
 ## Workers
 
