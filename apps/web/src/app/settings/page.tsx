@@ -22,6 +22,12 @@ import {
   ChevronRight,
   Github,
   KeyRound,
+  Search,
+  Download,
+  Package,
+  Star,
+  Trash2,
+  Layers,
 } from "lucide-react";
 import { OPTIO_TOOL_CATEGORIES, ALL_OPTIO_TOOL_NAMES } from "@optio/shared";
 
@@ -1177,8 +1183,631 @@ function GitHubTokenManager() {
   );
 }
 
+function MarketplaceTab() {
+  const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<
+    Array<{ source: string; name: string; description: string; stars: number }>
+  >([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [installed, setInstalled] = useState<any[]>([]);
+  const [loadingInstalled, setLoadingInstalled] = useState(true);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    api
+      .listMarketplaceSkills()
+      .then((res) => setInstalled(res.skills))
+      .catch(() => {})
+      .finally(() => setLoadingInstalled(false));
+  }, []);
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    setHasSearched(true);
+    try {
+      const res = await api.searchMarketplace(query.trim());
+      setSearchResults(res.results);
+    } catch (err) {
+      toast.error("Search failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleInstall = async (source: string) => {
+    setInstalling(source);
+    try {
+      const res = await api.installMarketplaceSkill(source);
+      setInstalled((prev) => [...prev, res.skill]);
+      toast.success("Skill installed");
+    } catch (err) {
+      toast.error("Install failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setInstalling(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await api.deleteMarketplaceSkill(id);
+      setInstalled((prev) => prev.filter((s) => s.id !== id));
+      toast.success("Marketplace skill removed");
+    } catch (err) {
+      toast.error("Failed to remove skill", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  };
+
+  const handleSyncAll = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.syncMarketplaceSkills();
+      toast.success(
+        `Synced ${res.synced} skills${res.errors.length > 0 ? ` (${res.errors.length} errors)` : ""}`,
+      );
+      const updated = await api.listMarketplaceSkills();
+      setInstalled(updated.skills);
+    } catch (err) {
+      toast.error("Sync failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Search */}
+      <section>
+        <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
+          <Search className="w-4 h-4" />
+          Search skills.sh
+        </h2>
+        <div className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-4">
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              placeholder="Search for skills (e.g. docker, testing, deploy)..."
+              className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+            />
+            <button
+              onClick={handleSearch}
+              disabled={searching || !query.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary-hover disabled:opacity-50"
+            >
+              {searching ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Search className="w-3.5 h-3.5" />
+              )}
+              Search
+            </button>
+          </div>
+
+          {hasSearched && searchResults.length === 0 && !searching && (
+            <p className="text-xs text-text-muted/60 text-center py-4">
+              No results found for &quot;{query}&quot;
+            </p>
+          )}
+
+          {searchResults.length > 0 && (
+            <div className="space-y-2">
+              {searchResults.map((result) => {
+                const isInstalled = installed.some((s) => s.source === result.source);
+                return (
+                  <div
+                    key={result.source}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg"
+                  >
+                    <Package className="w-4 h-4 text-text-muted shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{result.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted font-mono">
+                          {result.source}
+                        </span>
+                      </div>
+                      {result.description && (
+                        <p className="text-xs text-text-muted mt-0.5 truncate">
+                          {result.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-text-muted shrink-0">
+                      <Star className="w-3 h-3" />
+                      {result.stars}
+                    </div>
+                    <button
+                      onClick={() => handleInstall(result.source)}
+                      disabled={isInstalled || installing === result.source}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium shrink-0 ${
+                        isInstalled
+                          ? "bg-success/10 text-success cursor-default"
+                          : "bg-primary text-white hover:bg-primary-hover disabled:opacity-50"
+                      }`}
+                    >
+                      {installing === result.source ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : isInstalled ? (
+                        <CheckCircle2 className="w-3 h-3" />
+                      ) : (
+                        <Download className="w-3 h-3" />
+                      )}
+                      {isInstalled ? "Installed" : "Install"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Installed Marketplace Skills */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-text-muted flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Installed Marketplace Skills
+          </h2>
+          <button
+            onClick={handleSyncAll}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs hover:bg-primary/20 transition-colors disabled:opacity-50"
+          >
+            {syncing ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3" />
+            )}
+            Sync All
+          </button>
+        </div>
+        <div className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+          {loadingInstalled ? (
+            <div className="text-center text-text-muted text-sm py-4">
+              <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading...
+            </div>
+          ) : installed.length === 0 ? (
+            <p className="text-xs text-text-muted/60 text-center py-4">
+              No marketplace skills installed. Use the search above to find and install skills.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {installed.map((skill) => (
+                <div
+                  key={skill.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg"
+                >
+                  <Package className="w-4 h-4 text-text-muted shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{skill.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted font-mono">
+                        {skill.source}
+                      </span>
+                    </div>
+                    {skill.description && (
+                      <p className="text-xs text-text-muted mt-0.5 truncate">{skill.description}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDelete(skill.id)}
+                    className="text-text-muted hover:text-error shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SkillSetsTab() {
+  const [skillSets, setSkillSets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addingSkillTo, setAddingSkillTo] = useState<string | null>(null);
+  const [availableCustomSkills, setAvailableCustomSkills] = useState<any[]>([]);
+  const [availableMarketplaceSkills, setAvailableMarketplaceSkills] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadSkillSets();
+    api
+      .listSkills("global")
+      .then((res) => setAvailableCustomSkills(res.skills))
+      .catch(() => {});
+    api
+      .listMarketplaceSkills()
+      .then((res) => setAvailableMarketplaceSkills(res.skills))
+      .catch(() => {});
+  }, []);
+
+  const loadSkillSets = async () => {
+    try {
+      const res = await api.listSkillSets();
+      // Load items for each skill set
+      const detailed = await Promise.all(
+        res.skillSets.map(async (ss: any) => {
+          try {
+            const detail = await api.getSkillSet(ss.id);
+            return detail.skillSet;
+          } catch {
+            return ss;
+          }
+        }),
+      );
+      setSkillSets(detailed);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newName.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    try {
+      const res = await api.createSkillSet({
+        name: newName.trim(),
+        description: newDescription.trim() || undefined,
+      });
+      const detail = await api.getSkillSet(res.skillSet.id);
+      setSkillSets((prev) => [...prev, detail.skillSet]);
+      setShowCreate(false);
+      setNewName("");
+      setNewDescription("");
+      toast.success("Skill set created");
+    } catch (err) {
+      toast.error("Failed to create skill set", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  };
+
+  const handleDeleteSet = async (id: string) => {
+    try {
+      await api.deleteSkillSet(id);
+      setSkillSets((prev) => prev.filter((ss) => ss.id !== id));
+      toast.success("Skill set deleted");
+    } catch (err) {
+      toast.error("Failed to delete skill set", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  };
+
+  const handleAddItem = async (
+    setId: string,
+    skillType: "custom" | "marketplace",
+    skillId: string,
+  ) => {
+    try {
+      const res = await api.addSkillSetItem(setId, { skillType, skillId });
+      setSkillSets((prev) =>
+        prev.map((ss) =>
+          ss.id === setId ? { ...ss, items: [...(ss.items || []), res.item] } : ss,
+        ),
+      );
+      setAddingSkillTo(null);
+      toast.success("Skill added to set");
+    } catch (err) {
+      toast.error("Failed to add skill", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  };
+
+  const handleRemoveItem = async (setId: string, itemId: string) => {
+    try {
+      await api.removeSkillSetItem(setId, itemId);
+      setSkillSets((prev) =>
+        prev.map((ss) =>
+          ss.id === setId
+            ? { ...ss, items: (ss.items || []).filter((i: any) => i.id !== itemId) }
+            : ss,
+        ),
+      );
+      toast.success("Skill removed from set");
+    } catch (err) {
+      toast.error("Failed to remove skill", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-5 rounded-xl border border-border/50 bg-bg-card text-center text-text-muted text-sm">
+        <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-text-muted flex items-center gap-2">
+            <Layers className="w-4 h-4" />
+            Skill Sets
+          </h2>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Create Skill Set
+          </button>
+        </div>
+
+        {/* Create form */}
+        {showCreate && (
+          <div className="mb-4 p-4 rounded-xl border border-primary/30 bg-primary/5 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Name</label>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Frontend Tools"
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Description</label>
+                <input
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="A collection of frontend-related skills"
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowCreate(false);
+                  setNewName("");
+                  setNewDescription("");
+                }}
+                className="px-3 py-1.5 rounded-md text-xs text-text-muted hover:bg-bg-hover"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary-hover"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Skill set list */}
+        {skillSets.length === 0 && !showCreate && (
+          <div className="p-5 rounded-xl border border-border/50 bg-bg-card">
+            <p className="text-xs text-text-muted/60 text-center py-4">
+              No skill sets created yet. Skill sets let you group custom and marketplace skills
+              together for easy assignment to repositories.
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {skillSets.map((ss) => {
+            const isExpanded = expandedId === ss.id;
+            const items = ss.items || [];
+            return (
+              <div
+                key={ss.id}
+                className="rounded-xl border border-border/50 bg-bg-card overflow-hidden"
+              >
+                {/* Header */}
+                <div className="flex items-center gap-3 p-4">
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : ss.id)}
+                    className="text-text-muted hover:text-text"
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{ss.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted">
+                        {items.length} {items.length === 1 ? "skill" : "skills"}
+                      </span>
+                    </div>
+                    {ss.description && (
+                      <p className="text-xs text-text-muted mt-0.5 truncate">{ss.description}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDeleteSet(ss.id)}
+                    className="text-text-muted hover:text-error shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Expanded content */}
+                {isExpanded && (
+                  <div className="border-t border-border/50 p-4 space-y-3">
+                    {items.length > 0 && (
+                      <div className="space-y-2">
+                        {items.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center gap-3 p-2.5 rounded-lg border border-border bg-bg"
+                          >
+                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                              <span className="text-sm">
+                                {item.skillName || item.customSkillId || item.marketplaceSkillId}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  item.skillType === "marketplace"
+                                    ? "bg-primary/10 text-primary"
+                                    : "bg-success/10 text-success"
+                                }`}
+                              >
+                                {item.skillType}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleRemoveItem(ss.id, item.id)}
+                              className="text-text-muted hover:text-error shrink-0"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {items.length === 0 && addingSkillTo !== ss.id && (
+                      <p className="text-xs text-text-muted/60 text-center py-2">
+                        No skills in this set yet.
+                      </p>
+                    )}
+
+                    {/* Add skill dropdown */}
+                    {addingSkillTo === ss.id ? (
+                      <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
+                        <p className="text-xs font-medium text-text-muted">
+                          Select a skill to add:
+                        </p>
+                        {availableCustomSkills.length > 0 && (
+                          <div>
+                            <p className="text-[10px] text-text-muted/60 uppercase tracking-wider mb-1">
+                              Custom Skills
+                            </p>
+                            <div className="space-y-1">
+                              {availableCustomSkills
+                                .filter(
+                                  (cs) =>
+                                    !items.some(
+                                      (i: any) =>
+                                        i.skillType === "custom" &&
+                                        (i.customSkillId === cs.id || i.skillId === cs.id),
+                                    ),
+                                )
+                                .map((cs) => (
+                                  <button
+                                    key={cs.id}
+                                    onClick={() => handleAddItem(ss.id, "custom", cs.id)}
+                                    className="w-full flex items-center gap-2 p-2 rounded-md text-left text-xs hover:bg-bg-hover transition-colors"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-success shrink-0" />
+                                    <span className="font-medium">/{cs.name}</span>
+                                    {cs.description && (
+                                      <span className="text-text-muted truncate">
+                                        {cs.description}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                        {availableMarketplaceSkills.length > 0 && (
+                          <div>
+                            <p className="text-[10px] text-text-muted/60 uppercase tracking-wider mb-1">
+                              Marketplace Skills
+                            </p>
+                            <div className="space-y-1">
+                              {availableMarketplaceSkills
+                                .filter(
+                                  (ms) =>
+                                    !items.some(
+                                      (i: any) =>
+                                        i.skillType === "marketplace" &&
+                                        (i.marketplaceSkillId === ms.id || i.skillId === ms.id),
+                                    ),
+                                )
+                                .map((ms) => (
+                                  <button
+                                    key={ms.id}
+                                    onClick={() => handleAddItem(ss.id, "marketplace", ms.id)}
+                                    className="w-full flex items-center gap-2 p-2 rounded-md text-left text-xs hover:bg-bg-hover transition-colors"
+                                  >
+                                    <Package className="w-3 h-3 text-primary shrink-0" />
+                                    <span className="font-medium">{ms.name}</span>
+                                    {ms.description && (
+                                      <span className="text-text-muted truncate">
+                                        {ms.description}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                        {availableCustomSkills.length === 0 &&
+                          availableMarketplaceSkills.length === 0 && (
+                            <p className="text-xs text-text-muted/60 text-center py-2">
+                              No skills available. Create custom skills or install marketplace
+                              skills first.
+                            </p>
+                          )}
+                        <button
+                          onClick={() => setAddingSkillTo(null)}
+                          className="text-xs text-text-muted hover:text-text"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setAddingSkillTo(ss.id)}
+                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add Skill
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type SettingsTab = "general" | "marketplace" | "skill-sets";
+
 export default function SettingsPage() {
   usePageTitle("Settings");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [providers, setProviders] = useState<any[]>([]);
@@ -1216,140 +1845,177 @@ export default function SettingsPage() {
     }
   };
 
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: "general", label: "General", icon: <Bot className="w-4 h-4" /> },
+    { id: "marketplace", label: "Marketplace", icon: <Package className="w-4 h-4" /> },
+    { id: "skill-sets", label: "Skill Sets", icon: <Layers className="w-4 h-4" /> },
+  ];
+
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-8">
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 
-      {/* Optio Agent Settings */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
-          <Bot className="w-4 h-4" />
-          Optio Agent Settings
-        </h2>
-        <OptioAgentSettings />
-      </section>
+      {/* Tab Navigation */}
+      <div className="flex gap-1 p-1 rounded-lg bg-bg-card border border-border/50">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === tab.id
+                ? "bg-primary text-white"
+                : "text-text-muted hover:text-text hover:bg-bg-hover"
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Authentication */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3">Authentication</h2>
-        <AuthenticationSettings />
-      </section>
+      {/* General Tab */}
+      {activeTab === "general" && (
+        <>
+          {/* Optio Agent Settings */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
+              <Bot className="w-4 h-4" />
+              Optio Agent Settings
+            </h2>
+            <OptioAgentSettings />
+          </section>
 
-      {/* GitHub Token */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
-          <Github className="w-4 h-4" />
-          GitHub Token
-        </h2>
-        <GitHubTokenManager />
-      </section>
+          {/* Authentication */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3">Authentication</h2>
+            <AuthenticationSettings />
+          </section>
 
-      {/* Notifications */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3">Notifications</h2>
-        <div className="p-5 rounded-xl border border-border/50 bg-bg-card">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Bell className="w-5 h-5 text-text-muted" />
-              <div>
-                <p className="text-sm">Browser Notifications</p>
-                <p className="text-xs text-text-muted">
-                  Get notified when tasks complete or need attention
-                </p>
+          {/* GitHub Token */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
+              <Github className="w-4 h-4" />
+              GitHub Token
+            </h2>
+            <GitHubTokenManager />
+          </section>
+
+          {/* Notifications */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3">Notifications</h2>
+            <div className="p-5 rounded-xl border border-border/50 bg-bg-card">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Bell className="w-5 h-5 text-text-muted" />
+                  <div>
+                    <p className="text-sm">Browser Notifications</p>
+                    <p className="text-xs text-text-muted">
+                      Get notified when tasks complete or need attention
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={requestNotifications}
+                  disabled={notificationsEnabled}
+                  className={`px-3 py-1.5 rounded-md text-xs ${
+                    notificationsEnabled
+                      ? "bg-success/10 text-success"
+                      : "bg-primary text-white hover:bg-primary-hover"
+                  }`}
+                >
+                  {notificationsEnabled ? "Enabled" : "Enable"}
+                </button>
               </div>
             </div>
-            <button
-              onClick={requestNotifications}
-              disabled={notificationsEnabled}
-              className={`px-3 py-1.5 rounded-md text-xs ${
-                notificationsEnabled
-                  ? "bg-success/10 text-success"
-                  : "bg-primary text-white hover:bg-primary-hover"
-              }`}
-            >
-              {notificationsEnabled ? "Enabled" : "Enable"}
-            </button>
-          </div>
-        </div>
-      </section>
+          </section>
 
-      {/* Ticket Sync */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3">Ticket Integration</h2>
-        <div className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-          <p className="text-xs text-text-muted">
-            Sync issues labeled with{" "}
-            <code className="px-1 py-0.5 bg-bg rounded text-primary">optio</code> from your
-            configured ticket providers.
-          </p>
-          {providers.length > 0 ? (
-            <div className="space-y-2">
-              {providers.map((p: any) => (
-                <div key={p.id} className="flex items-center gap-2 text-sm">
-                  <span
-                    className={`w-2 h-2 rounded-full ${p.enabled ? "bg-success" : "bg-text-muted"}`}
-                  />
-                  <span className="capitalize">{p.source}</span>
-                  <span className="text-xs text-text-muted">
-                    {p.source === "github" &&
-                      p.config?.owner &&
-                      `${p.config.owner}/${p.config.repo}`}
-                    {p.source === "notion" &&
-                      p.config?.databaseId &&
-                      `Database: ${p.config.databaseId}`}
-                    {p.source === "linear" && p.config?.teamId && `Team: ${p.config.teamId}`}
-                    {p.source === "jira" && p.config?.baseUrl && `${p.config.baseUrl}`}
-                  </span>
+          {/* Ticket Sync */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3">Ticket Integration</h2>
+            <div className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+              <p className="text-xs text-text-muted">
+                Sync issues labeled with{" "}
+                <code className="px-1 py-0.5 bg-bg rounded text-primary">optio</code> from your
+                configured ticket providers.
+              </p>
+              {providers.length > 0 ? (
+                <div className="space-y-2">
+                  {providers.map((p: any) => (
+                    <div key={p.id} className="flex items-center gap-2 text-sm">
+                      <span
+                        className={`w-2 h-2 rounded-full ${p.enabled ? "bg-success" : "bg-text-muted"}`}
+                      />
+                      <span className="capitalize">{p.source}</span>
+                      <span className="text-xs text-text-muted">
+                        {p.source === "github" &&
+                          p.config?.owner &&
+                          `${p.config.owner}/${p.config.repo}`}
+                        {p.source === "notion" &&
+                          p.config?.databaseId &&
+                          `Database: ${p.config.databaseId}`}
+                        {p.source === "linear" && p.config?.teamId && `Team: ${p.config.teamId}`}
+                        {p.source === "jira" && p.config?.baseUrl && `${p.config.baseUrl}`}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <p className="text-xs text-text-muted">No ticket providers configured.</p>
+              )}
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs hover:bg-primary/20 transition-colors disabled:opacity-50"
+              >
+                {syncing ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                Sync Now
+              </button>
             </div>
-          ) : (
-            <p className="text-xs text-text-muted">No ticket providers configured.</p>
-          )}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs hover:bg-primary/20 transition-colors disabled:opacity-50"
-          >
-            {syncing ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3 h-3" />
-            )}
-            Sync Now
-          </button>
-        </div>
-      </section>
+          </section>
 
-      {/* MCP Servers */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
-          <Server className="w-4 h-4" />
-          Global MCP Servers
-        </h2>
-        <GlobalMcpServers />
-      </section>
+          {/* MCP Servers */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
+              <Server className="w-4 h-4" />
+              Global MCP Servers
+            </h2>
+            <GlobalMcpServers />
+          </section>
 
-      {/* Custom Skills */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
-          <Sparkles className="w-4 h-4" />
-          Global Custom Skills
-        </h2>
-        <GlobalSkills />
-      </section>
+          {/* Custom Skills */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Global Custom Skills
+            </h2>
+            <GlobalSkills />
+          </section>
 
-      {/* Prompt Template */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3">Default Agent Prompt Template</h2>
-        <PromptTemplateEditor />
-      </section>
+          {/* Prompt Template */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3">
+              Default Agent Prompt Template
+            </h2>
+            <PromptTemplateEditor />
+          </section>
 
-      {/* Default Code Review */}
-      <section>
-        <h2 className="text-sm font-medium text-text-muted mb-3">Default Code Review Agent</h2>
-        <DefaultReviewEditor />
-      </section>
+          {/* Default Code Review */}
+          <section>
+            <h2 className="text-sm font-medium text-text-muted mb-3">Default Code Review Agent</h2>
+            <DefaultReviewEditor />
+          </section>
+        </>
+      )}
+
+      {/* Marketplace Tab */}
+      {activeTab === "marketplace" && <MarketplaceTab />}
+
+      {/* Skill Sets Tab */}
+      {activeTab === "skill-sets" && <SkillSetsTab />}
     </div>
   );
 }

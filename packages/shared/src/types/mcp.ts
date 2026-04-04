@@ -59,3 +59,43 @@ export interface UpdateCustomSkillInput {
   prompt?: string;
   enabled?: boolean;
 }
+
+// ── Marketplace Skills ──────────────────────────────────────────────────────
+
+export interface MarketplaceSkillConfig {
+  id: string;
+  source: string; // "owner/repo" or "owner/repo@skill-name"
+  skillPath: string;
+  name: string;
+  description?: string | null;
+  prompt: string;
+  referenceFiles?: Array<{ path: string; content: string }> | null;
+  sourceCommit?: string | null;
+  lastSyncedAt?: Date | null;
+  workspaceId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ── Skill Sets ──────────────────────────────────────────────────────────────
+
+export interface SkillSetConfig {
+  id: string;
+  name: string;
+  description?: string | null;
+  scope: string;
+  workspaceId?: string | null;
+  items?: SkillSetItemConfig[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SkillSetItemConfig {
+  id: string;
+  skillSetId: string;
+  skillType: "custom" | "marketplace";
+  skillId: string;
+  skillName?: string; // populated via join
+  skillDescription?: string | null;
+  createdAt: Date;
+}

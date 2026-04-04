@@ -24,6 +24,7 @@ import {
   CircleDot,
   Server,
   Sparkles,
+  Layers,
   X,
 } from "lucide-react";
 import { formatRelativeTime, formatDuration } from "@/lib/utils";
@@ -96,6 +97,12 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
   const [newSkillName, setNewSkillName] = useState("");
   const [newSkillDescription, setNewSkillDescription] = useState("");
   const [newSkillPrompt, setNewSkillPrompt] = useState("");
+
+  // Skill Sets
+  const [repoSkillSets, setRepoSkillSets] = useState<any[]>([]);
+  const [allSkillSets, setAllSkillSets] = useState<any[]>([]);
+  const [selectedSkillSetId, setSelectedSkillSetId] = useState("");
+  const [assigningSkillSet, setAssigningSkillSet] = useState(false);
 
   useEffect(() => {
     api
@@ -171,6 +178,19 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
       .then((res) => setSkills(res.skills))
       .catch(() => {});
   }, [repo?.id, repo?.repoUrl]);
+
+  // Fetch skill sets for this repo + all available skill sets
+  useEffect(() => {
+    if (!repo?.repoUrl) return;
+    api
+      .getRepoSkillSets(repo.repoUrl)
+      .then((res) => setRepoSkillSets(res.skillSets))
+      .catch(() => {});
+    api
+      .listSkillSets()
+      .then((res) => setAllSkillSets(res.skillSets))
+      .catch(() => {});
+  }, [repo?.repoUrl]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -1315,6 +1335,98 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         )}
+      </section>
+
+      {/* Skill Sets */}
+      <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+        <div className="flex items-center gap-2">
+          <Layers className="w-4 h-4 text-text-muted" />
+          <h2 className="text-sm font-medium">Skill Sets</h2>
+        </div>
+        <p className="text-xs text-text-muted">
+          Assign skill sets to this repo. Skill sets bundle multiple skills together so agents have
+          the right capabilities for the job.
+        </p>
+
+        {repoSkillSets.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {repoSkillSets.map((ss: any) => (
+              <span
+                key={ss.id}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-bg text-xs font-medium"
+              >
+                {ss.name}
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.removeSkillSetFromRepo(repo.repoUrl, ss.id);
+                      setRepoSkillSets((prev) => prev.filter((s) => s.id !== ss.id));
+                      toast.success(`Removed "${ss.name}"`);
+                    } catch {
+                      toast.error("Failed to remove skill set");
+                    }
+                  }}
+                  className="text-text-muted hover:text-error"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {(() => {
+          const assignedIds = new Set(repoSkillSets.map((s: any) => s.id));
+          const available = allSkillSets.filter((s: any) => !assignedIds.has(s.id));
+          if (available.length === 0 && repoSkillSets.length === 0) {
+            return (
+              <p className="text-xs text-text-muted/60 italic">
+                No skill sets available. Create one in the Skills page first.
+              </p>
+            );
+          }
+          if (available.length === 0) return null;
+          return (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedSkillSetId}
+                onChange={(e) => setSelectedSkillSetId(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+              >
+                <option value="">Select a skill set...</option>
+                {available.map((ss: any) => (
+                  <option key={ss.id} value={ss.id}>
+                    {ss.name}
+                    {ss.description ? ` — ${ss.description}` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={!selectedSkillSetId || assigningSkillSet}
+                onClick={async () => {
+                  if (!selectedSkillSetId) return;
+                  setAssigningSkillSet(true);
+                  try {
+                    await api.assignSkillSetToRepo(repo.repoUrl, selectedSkillSetId);
+                    const assigned = allSkillSets.find((s: any) => s.id === selectedSkillSetId);
+                    if (assigned) {
+                      setRepoSkillSets((prev) => [...prev, assigned]);
+                    }
+                    setSelectedSkillSetId("");
+                    toast.success("Skill set assigned");
+                  } catch {
+                    toast.error("Failed to assign skill set");
+                  } finally {
+                    setAssigningSkillSet(false);
+                  }
+                }}
+                className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {assigningSkillSet ? "Assigning..." : "Assign"}
+              </button>
+            </div>
+          );
+        })()}
       </section>
 
       {/* Image */}

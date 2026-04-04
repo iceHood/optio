@@ -676,3 +676,79 @@ export const promptTemplates = pgTable(
   },
   (table) => [index("prompt_templates_workspace_id_idx").on(table.workspaceId)],
 );
+
+// ── Marketplace Skills (from skills.sh) ─────────────────────────────────────
+
+export const marketplaceSkills = pgTable(
+  "marketplace_skills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: text("source").notNull(), // "owner/repo" or "owner/repo@skill-name"
+    skillPath: text("skill_path").notNull(), // path to SKILL.md in repo
+    name: text("name").notNull(),
+    description: text("description"),
+    prompt: text("prompt").notNull(), // markdown content from SKILL.md
+    referenceFiles: jsonb("reference_files").$type<Array<{ path: string; content: string }>>(),
+    sourceCommit: text("source_commit"), // git commit SHA for version tracking
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    workspaceId: uuid("workspace_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("marketplace_skills_source_idx").on(table.source),
+    index("marketplace_skills_workspace_id_idx").on(table.workspaceId),
+  ],
+);
+
+// ── Skill Sets ──────────────────────────────────────────────────────────────
+
+export const skillSets = pgTable(
+  "skill_sets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    scope: text("scope").notNull().default("global"), // "global" or workspaceId
+    workspaceId: uuid("workspace_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("skill_sets_scope_idx").on(table.scope),
+    index("skill_sets_workspace_id_idx").on(table.workspaceId),
+  ],
+);
+
+export const skillSetItems = pgTable(
+  "skill_set_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    skillSetId: uuid("skill_set_id")
+      .notNull()
+      .references(() => skillSets.id, { onDelete: "cascade" }),
+    skillType: text("skill_type").notNull(), // "custom" | "marketplace"
+    skillId: uuid("skill_id").notNull(), // references custom_skills.id or marketplace_skills.id
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("skill_set_items_set_id_idx").on(table.skillSetId),
+    index("skill_set_items_skill_idx").on(table.skillType, table.skillId),
+  ],
+);
+
+export const repoSkillSets = pgTable(
+  "repo_skill_sets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    repoUrl: text("repo_url").notNull(),
+    skillSetId: uuid("skill_set_id")
+      .notNull()
+      .references(() => skillSets.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("repo_skill_sets_repo_url_idx").on(table.repoUrl),
+    index("repo_skill_sets_set_id_idx").on(table.skillSetId),
+  ],
+);

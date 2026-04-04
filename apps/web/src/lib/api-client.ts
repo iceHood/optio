@@ -943,6 +943,80 @@ export const api = {
 
   deleteSkill: (id: string) => request<void>(`/api/skills/${id}`, { method: "DELETE" }),
 
+  // Skill Sets
+  listSkillSets: () => request<{ skillSets: any[] }>("/api/skill-sets"),
+
+  getSkillSet: (id: string) => request<{ skillSet: any }>(`/api/skill-sets/${id}`),
+
+  createSkillSet: (data: { name: string; description?: string }) =>
+    request<{ skillSet: any }>("/api/skill-sets", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateSkillSet: (id: string, data: { name?: string; description?: string | null }) =>
+    request<{ skillSet: any }>(`/api/skill-sets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  deleteSkillSet: (id: string) => request<void>(`/api/skill-sets/${id}`, { method: "DELETE" }),
+
+  addSkillSetItem: (
+    setId: string,
+    data: { skillType: "custom" | "marketplace"; skillId: string },
+  ) =>
+    request<{ item: any }>(`/api/skill-sets/${setId}/items`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  removeSkillSetItem: (setId: string, itemId: string) =>
+    request<void>(`/api/skill-sets/${setId}/items/${itemId}`, { method: "DELETE" }),
+
+  // Repo Skill Set Assignments
+  getRepoSkillSets: (repoUrl: string) =>
+    request<{ skillSets: any[] }>(`/api/repos/${encodeURIComponent(repoUrl)}/skill-sets`),
+
+  assignSkillSetToRepo: (repoUrl: string, skillSetId: string) =>
+    request<{ ok: boolean }>(`/api/repos/${encodeURIComponent(repoUrl)}/skill-sets`, {
+      method: "POST",
+      body: JSON.stringify({ skillSetId }),
+    }),
+
+  removeSkillSetFromRepo: (repoUrl: string, skillSetId: string) =>
+    request<void>(`/api/repos/${encodeURIComponent(repoUrl)}/skill-sets/${skillSetId}`, {
+      method: "DELETE",
+    }),
+
+  // Marketplace Skills
+  searchMarketplace: (query: string) =>
+    request<{
+      results: Array<{ source: string; name: string; description: string; stars: number }>;
+    }>("/api/skills/marketplace/search", { method: "POST", body: JSON.stringify({ query }) }),
+
+  installMarketplaceSkill: (source: string, skillPath?: string) =>
+    request<{ skill: any }>("/api/skills/marketplace/install", {
+      method: "POST",
+      body: JSON.stringify({ source, skillPath }),
+    }),
+
+  listMarketplaceSkills: () => request<{ skills: any[] }>("/api/skills/marketplace"),
+
+  deleteMarketplaceSkill: (id: string) =>
+    request<void>(`/api/skills/marketplace/${id}`, { method: "DELETE" }),
+
+  syncMarketplaceSkills: () =>
+    request<{ synced: number; errors: string[] }>("/api/skills/marketplace/sync", {
+      method: "POST",
+    }),
+
+  uploadSkill: (data: { name: string; description?: string; content: string }) =>
+    request<{ skill: any }>("/api/skills/upload", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   // PR Reviews
   listPullRequests: (params?: { repoId?: string }) => {
     const qs = new URLSearchParams();

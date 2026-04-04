@@ -84,8 +84,8 @@ export async function deleteSkill(id: string): Promise<void> {
 }
 
 /**
- * Get all enabled skills for a task (global + repo-scoped).
- * Repo-scoped skills with the same name override global ones.
+ * Get all enabled skills for a task (global + repo-scoped + skill sets).
+ * Priority: repo direct > skill set > global. Deduped by name.
  */
 export async function getSkillsForTask(
   repoUrl: string,
@@ -115,19 +115,61 @@ export async function getSkillsForTask(
       byName.set(config.name, config);
     }
   }
+
+  // Also include skills from skill sets assigned to this repo
+  try {
+    const { getSkillsFromSkillSets } = await import("./skill-set-service.js");
+    const skillSetSkills = await getSkillsFromSkillSets(repoUrl);
+    for (const skill of skillSetSkills) {
+      if (!byName.has(skill.name)) {
+        // Skill set skills have lower priority than direct assignments
+        byName.set(skill.name, {
+          id: "",
+          name: skill.name,
+          prompt: skill.prompt,
+          scope: "skill-set",
+          enabled: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          _referenceFiles: skill.referenceFiles,
+        } as CustomSkillConfig & { _referenceFiles?: unknown });
+      }
+    }
+  } catch {
+    // skill-set-service not available (e.g. tables not migrated yet)
+  }
+
   return Array.from(byName.values());
 }
 
 /**
  * Build setup files for custom skills to be written to .claude/commands/ in the worktree.
+ * Also includes reference files from marketplace skills (via skill sets).
  */
 export function buildSkillSetupFiles(
   skills: CustomSkillConfig[],
 ): Array<{ path: string; content: string }> {
-  return skills.map((skill) => ({
-    path: `.claude/commands/${skill.name}.md`,
-    content: skill.prompt,
-  }));
+  const files: Array<{ path: string; content: string }> = [];
+  for (const skill of skills) {
+    files.push({
+      path: `.claude/commands/${skill.name}.md`,
+      content: skill.prompt,
+    });
+    // Include reference files from marketplace skills (attached via _referenceFiles)
+    const refs = (skill as any)._referenceFiles as
+      | Array<{ path: string; content: string }>
+      | null
+      | undefined;
+    if (refs) {
+      for (const ref of refs) {
+        files.push({
+          path: `.claude/commands/${skill.name}/${ref.path}`,
+          content: ref.content,
+        });
+      }
+    }
+  }
+  return files;
 }
 
 function mapRow(row: typeof customSkills.$inferSelect): CustomSkillConfig {

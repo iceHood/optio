@@ -281,6 +281,13 @@
       "when": 1776355200000,
       "tag": "0039_cautious_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1776441600000,
+      "tag": "0040_skill_sets_marketplace",
+      "breakpoints": true
     }
   ]
 }
