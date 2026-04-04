@@ -39,23 +39,64 @@ function parseSkillMd(content: string): { name?: string; description?: string; b
 
 export async function searchMarketplace(
   query: string,
+  _githubToken?: string,
+): Promise<Array<{ source: string; name: string; description: string; installs: number }>> {
+  // Use the official skills CLI to search skills.sh marketplace
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+
+  try {
+    const { stdout } = await execFileAsync("npx", ["-y", "skills", "search", query], {
+      timeout: 15_000,
+      env: { ...process.env, NO_COLOR: "1" },
+    });
+
+    // Parse output lines: "owner/repo@skill-name  NNK installs"
+    const results: Array<{ source: string; name: string; description: string; installs: number }> =
+      [];
+    for (const line of stdout.split("\n")) {
+      // Match lines like: "github/awesome-copilot@git-commit  19.1K installs"
+      const match = line.match(/^\s*([^\s]+\/[^\s]+)@([^\s]+)\s+([\d.]+[KM]?)\s*installs/);
+      if (!match) continue;
+
+      const [, ownerRepo, skillName, installStr] = match;
+      let installs = parseFloat(installStr);
+      if (installStr.endsWith("K")) installs *= 1000;
+      if (installStr.endsWith("M")) installs *= 1_000_000;
+
+      results.push({
+        source: `${ownerRepo}@${skillName}`,
+        name: skillName,
+        description: `from ${ownerRepo}`,
+        installs: Math.round(installs),
+      });
+    }
+
+    return results;
+  } catch (err) {
+    logger.warn({ err, query }, "skills CLI search failed, falling back to GitHub search");
+    // Fallback: basic GitHub search
+    return searchGitHubFallback(query, _githubToken);
+  }
+}
+
+/** Fallback search via GitHub API when skills CLI is not available */
+async function searchGitHubFallback(
+  query: string,
   githubToken?: string,
-): Promise<Array<{ source: string; name: string; description: string; stars: number }>> {
+): Promise<Array<{ source: string; name: string; description: string; installs: number }>> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github.v3+json",
     "User-Agent": "Optio",
   };
   if (githubToken) headers.Authorization = `Bearer ${githubToken}`;
 
-  // Search GitHub repos that have SKILL.md files
-  const searchQuery = `${query} filename:SKILL.md`;
   const res = await fetch(
-    `https://api.github.com/search/code?q=${encodeURIComponent(searchQuery)}&per_page=20`,
+    `https://api.github.com/search/code?q=${encodeURIComponent(`${query} filename:SKILL.md`)}&per_page=20`,
     { headers },
   );
-  if (!res.ok) {
-    throw new Error(`GitHub search failed: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`GitHub search failed: ${res.status}`);
 
   const data = (await res.json()) as {
     items: Array<{
@@ -65,30 +106,24 @@ export async function searchMarketplace(
     }>;
   };
 
-  // Deduplicate by repo
   const seen = new Set<string>();
-  const results: Array<{ source: string; name: string; description: string; stars: number }> = [];
+  const results: Array<{ source: string; name: string; description: string; installs: number }> =
+    [];
   for (const item of data.items) {
     const source = item.repository.full_name;
     if (seen.has(source)) continue;
     seen.add(source);
-
-    // Derive skill name from path (e.g., skills/foo/SKILL.md → foo)
     const pathParts = item.path.split("/");
     const skillName =
-      pathParts.length > 1
-        ? pathParts[pathParts.length - 2]
-        : (source.split("/")[1] ?? item.name.replace(/\.md$/, ""));
-
+      pathParts.length > 1 ? pathParts[pathParts.length - 2] : (source.split("/")[1] ?? "unknown");
     results.push({
       source,
       name: skillName,
       description: item.repository.description ?? "",
-      stars: item.repository.stargazers_count ?? 0,
+      installs: item.repository.stargazers_count ?? 0,
     });
   }
-
-  results.sort((a, b) => b.stars - a.stars);
+  results.sort((a, b) => b.installs - a.installs);
   return results;
 }
 

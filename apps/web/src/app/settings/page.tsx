@@ -1187,7 +1187,7 @@ function MarketplaceTab() {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<
-    Array<{ source: string; name: string; description: string; stars: number }>
+    Array<{ source: string; name: string; description: string; installs: number }>
   >([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [installed, setInstalled] = useState<any[]>([]);
@@ -1325,8 +1325,8 @@ function MarketplaceTab() {
                       )}
                     </div>
                     <div className="flex items-center gap-1 text-xs text-text-muted shrink-0">
-                      <Star className="w-3 h-3" />
-                      {result.stars}
+                      <Download className="w-3 h-3" />
+                      {result.installs.toLocaleString()} installs
                     </div>
                     <button
                       onClick={() => handleInstall(result.source)}

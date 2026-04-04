@@ -992,7 +992,7 @@ export const api = {
   // Marketplace Skills
   searchMarketplace: (query: string) =>
     request<{
-      results: Array<{ source: string; name: string; description: string; stars: number }>;
+      results: Array<{ source: string; name: string; description: string; installs: number }>;
     }>("/api/skills/marketplace/search", { method: "POST", body: JSON.stringify({ query }) }),
 
   installMarketplaceSkill: (source: string, skillPath?: string) =>
