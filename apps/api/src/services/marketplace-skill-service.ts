@@ -55,15 +55,24 @@ export async function fetchSkillsCatalog(): Promise<SkillsCatalogEntry[]> {
   if (!res.ok) throw new Error(`Failed to fetch skills.sh: ${res.status}`);
   const html = await res.text();
 
-  // Extract initialSkills JSON from RSC stream
-  const match = html.match(/"initialSkills":\[(\{.*?\})\]/);
-  if (!match) {
-    // Try broader match — the array can be very long
-    const bigMatch = html.match(/"initialSkills":(\[[^\]]*\])/);
-    if (!bigMatch) throw new Error("Could not find initialSkills in skills.sh response");
-    return JSON.parse(bigMatch[1]) as SkillsCatalogEntry[];
+  // Extract initialSkills JSON from RSC stream.
+  // The data is embedded as escaped JSON inside a script tag:
+  //   initialSkills\":[{\"source\":\"...\",\"skillId\":\"...\",\"name\":\"...\",\"installs\":123},...]
+  // We need to find and unescape it.
+  const escapedMatch = html.match(/initialSkills\\":\s*(\[.*?\])/);
+  if (escapedMatch) {
+    // Unescape the JSON: \" → "
+    const unescaped = escapedMatch[1].replace(/\\"/g, '"');
+    return JSON.parse(unescaped) as SkillsCatalogEntry[];
   }
-  return JSON.parse(`[${match[1]}]`) as SkillsCatalogEntry[];
+
+  // Try unescaped variant (in case RSC format changes)
+  const plainMatch = html.match(/"initialSkills":\s*(\[.*?\])/);
+  if (plainMatch) {
+    return JSON.parse(plainMatch[1]) as SkillsCatalogEntry[];
+  }
+
+  throw new Error("Could not find initialSkills in skills.sh response");
 }
 
 /**
