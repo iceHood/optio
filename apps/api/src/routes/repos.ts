@@ -200,4 +200,44 @@ export async function repoRoutes(app: FastifyInstance) {
       reply.status(500).send({ error: String(err) });
     }
   });
+
+  // ── Pipeline Stages ─────────────────────────────────────────────────────
+
+  const pipelineStageSchema = z.object({
+    stage: z.string().min(1),
+    stageOrder: z.number().int().min(0),
+    agentId: z.string().uuid().nullable().optional(),
+    enabled: z.boolean().optional(),
+  });
+
+  const setPipelineSchema = z.object({
+    stages: z.array(pipelineStageSchema),
+  });
+
+  // GET /api/repos/:id/pipeline — get pipeline stages for a repo
+  app.get("/api/repos/:id/pipeline", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const repo = await repoService.getRepo(id);
+    if (!repo) return reply.status(404).send({ error: "Repo not found" });
+    const wsId = req.user?.workspaceId;
+    if (wsId && repo.workspaceId !== wsId) {
+      return reply.status(404).send({ error: "Repo not found" });
+    }
+    const stages = await repoService.getPipelineStages(id);
+    reply.send({ stages });
+  });
+
+  // PUT /api/repos/:id/pipeline — replace all pipeline stages for a repo
+  app.put("/api/repos/:id/pipeline", { preHandler: [requireRole("admin")] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const repo = await repoService.getRepo(id);
+    if (!repo) return reply.status(404).send({ error: "Repo not found" });
+    const wsId = req.user?.workspaceId;
+    if (wsId && repo.workspaceId !== wsId) {
+      return reply.status(404).send({ error: "Repo not found" });
+    }
+    const { stages: stageInputs } = setPipelineSchema.parse(req.body);
+    const stages = await repoService.setPipelineStages(id, stageInputs);
+    reply.send({ stages });
+  });
 }

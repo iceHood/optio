@@ -1,6 +1,7 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, asc } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { repos, workspaces } from "../db/schema.js";
+import { repos, workspaces, repoPipelineStages } from "../db/schema.js";
+import type { PipelineStage, PipelineStageInput } from "@optio/shared";
 import { encrypt, decrypt } from "./secret-service.js";
 import { normalizeRepoUrl } from "@optio/shared";
 
@@ -221,4 +222,64 @@ export async function updateRepo(
 
 export async function deleteRepo(id: string): Promise<void> {
   await db.delete(repos).where(eq(repos.id, id));
+}
+
+// ── Pipeline Stages ─────────────────────────────────────────────────────────
+
+export async function getPipelineStages(repoId: string): Promise<PipelineStage[]> {
+  const rows = await db
+    .select()
+    .from(repoPipelineStages)
+    .where(eq(repoPipelineStages.repoId, repoId))
+    .orderBy(asc(repoPipelineStages.stageOrder));
+  return rows.map(mapStageRow);
+}
+
+export async function getPipelineStagesByRepoUrl(
+  repoUrl: string,
+  workspaceId?: string | null,
+): Promise<PipelineStage[]> {
+  // Look up repo ID first
+  const conditions = workspaceId
+    ? and(eq(repos.repoUrl, repoUrl), eq(repos.workspaceId, workspaceId))
+    : and(eq(repos.repoUrl, repoUrl), isNull(repos.workspaceId));
+  const [repo] = await db.select({ id: repos.id }).from(repos).where(conditions!);
+  if (!repo) return [];
+  return getPipelineStages(repo.id);
+}
+
+export async function setPipelineStages(
+  repoId: string,
+  stages: PipelineStageInput[],
+): Promise<PipelineStage[]> {
+  // Delete existing stages and re-insert
+  await db.delete(repoPipelineStages).where(eq(repoPipelineStages.repoId, repoId));
+  if (stages.length === 0) return [];
+
+  const rows = await db
+    .insert(repoPipelineStages)
+    .values(
+      stages.map((s) => ({
+        repoId,
+        stage: s.stage,
+        stageOrder: s.stageOrder,
+        agentId: s.agentId ?? undefined,
+        enabled: s.enabled ?? true,
+      })),
+    )
+    .returning();
+  return rows.map(mapStageRow);
+}
+
+function mapStageRow(row: typeof repoPipelineStages.$inferSelect): PipelineStage {
+  return {
+    id: row.id,
+    repoId: row.repoId,
+    stage: row.stage,
+    stageOrder: row.stageOrder,
+    agentId: row.agentId,
+    enabled: row.enabled,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }

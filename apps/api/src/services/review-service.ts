@@ -109,9 +109,12 @@ export async function launchReview(parentTaskId: string): Promise<string> {
   const [, owner, repo] = prMatch;
   const prNumber = parseInt(prMatch[3], 10);
 
-  // Get repo config
-  const { getRepoByUrl } = await import("./repo-service.js");
+  // Get repo config and resolve agent for review stage
+  const { getRepoByUrl, getPipelineStages } = await import("./repo-service.js");
+  const { resolveAgentConfig } = await import("./agent-config-resolver.js");
   const repoConfig = await getRepoByUrl(parentTask.repoUrl);
+  const pipelineStages = repoConfig ? await getPipelineStages(repoConfig.id) : [];
+  const resolved = await resolveAgentConfig("review", repoConfig, { pipelineStages });
 
   // Fetch PR context from GitHub in parallel with subtask creation
   const prContextPromise = fetchPrContext(owner, repo, prNumber, parentTask.createdBy);
@@ -125,7 +128,7 @@ export async function launchReview(parentTaskId: string): Promise<string> {
     prompt: `Review PR #${prNumber} for: ${parentTask.title}`,
     taskType: "review",
     blocksParent: true,
-    agentType: "claude-code",
+    agentType: resolved.agentType,
   });
 
   const reviewTask = subtask;
@@ -188,8 +191,8 @@ export async function launchReview(parentTaskId: string): Promise<string> {
         renderedPrompt,
         taskFileContent: reviewContext,
         taskFilePath: REVIEW_TASK_FILE_PATH,
-        // Use review model if configured
-        claudeModel: repoConfig?.reviewModel ?? "sonnet",
+        // Use resolved review agent model (from pipeline agent or repo config)
+        claudeModel: resolved.model ?? repoConfig?.reviewModel ?? "sonnet",
       },
     },
     {

@@ -1,6 +1,6 @@
-import { eq, and, or, isNull } from "drizzle-orm";
+import { eq, and, or, isNull, inArray } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { mcpServers } from "../db/schema.js";
+import { mcpServers, agentMcpServers } from "../db/schema.js";
 import type { McpServerConfig } from "@optio/shared";
 import { retrieveSecret } from "./secret-service.js";
 
@@ -116,6 +116,44 @@ export async function getMcpServersForTask(
       byName.set(config.name, config);
     }
   }
+  return Array.from(byName.values());
+}
+
+/**
+ * Get MCP servers associated with an agent and merge with repo/global servers.
+ * Agent servers take priority over repo-scoped, which take priority over global.
+ */
+export async function getMcpServersForAgent(
+  agentId: string,
+  repoUrl: string,
+  workspaceId?: string | null,
+): Promise<McpServerConfig[]> {
+  // First get the base repo/global servers
+  const base = await getMcpServersForTask(repoUrl, workspaceId);
+  const byName = new Map<string, McpServerConfig>();
+  for (const s of base) {
+    byName.set(s.name, s);
+  }
+
+  // Fetch agent-associated MCP server IDs
+  const assocRows = await db
+    .select({ mcpServerId: agentMcpServers.mcpServerId })
+    .from(agentMcpServers)
+    .where(eq(agentMcpServers.agentId, agentId));
+
+  if (assocRows.length > 0) {
+    const ids = assocRows.map((r) => r.mcpServerId);
+    const agentServerRows = await db
+      .select()
+      .from(mcpServers)
+      .where(and(eq(mcpServers.enabled, true), inArray(mcpServers.id, ids)));
+
+    // Agent servers override by name
+    for (const row of agentServerRows) {
+      byName.set(row.name, mapRow(row));
+    }
+  }
+
   return Array.from(byName.values());
 }
 

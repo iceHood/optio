@@ -114,6 +114,8 @@ export const tasks = pgTable(
     blocksParent: boolean("blocks_parent").notNull().default(false), // if true, parent waits for this
     worktreeState: text("worktree_state"), // "active" | "dirty" | "reset" | "preserved" | "removed"
     lastPodId: uuid("last_pod_id"), // last pod this task ran on (for same-pod retry affinity)
+    agentId: uuid("agent_id"), // FK to agents — which agent config was used (nullable for backward compat)
+    pipelineStageId: uuid("pipeline_stage_id"), // FK to repo_pipeline_stages — which pipeline stage (nullable)
     workflowRunId: uuid("workflow_run_id"), // nullable FK to workflow_runs
     createdBy: uuid("created_by"), // nullable FK to users (null when auth is disabled)
     ignoreOffPeak: boolean("ignore_off_peak").notNull().default(false),
@@ -753,5 +755,93 @@ export const repoSkillSets = pgTable(
   (table) => [
     index("repo_skill_sets_repo_url_idx").on(table.repoUrl),
     index("repo_skill_sets_set_id_idx").on(table.skillSetId),
+  ],
+);
+
+// ── Agents (reusable config bundles) ────────────────────────────────────────
+
+export const agents = pgTable(
+  "agents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    agentType: text("agent_type").notNull().default("claude-code"), // "claude-code" | "codex" | "copilot"
+    model: text("model"), // "opus" | "sonnet" | "haiku" etc.
+    contextWindow: text("context_window"), // "200k" | "1m"
+    thinking: boolean("thinking"),
+    effort: text("effort"), // "low" | "medium" | "high"
+    imagePreset: text("image_preset"), // "base" | "node" | "python" | "go" | "rust" | "full"
+    customDockerfile: text("custom_dockerfile"),
+    extraPackages: text("extra_packages"),
+    setupCommands: text("setup_commands"),
+    maxTurns: integer("max_turns"),
+    promptTemplate: text("prompt_template"), // custom system prompt for this agent
+    workspaceId: uuid("workspace_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("agents_workspace_id_idx").on(table.workspaceId)],
+);
+
+// ── Agent ↔ MCP Server associations ────────────────────────────────────────
+
+export const agentMcpServers = pgTable(
+  "agent_mcp_servers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    mcpServerId: uuid("mcp_server_id")
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("agent_mcp_servers_agent_id_idx").on(table.agentId),
+    index("agent_mcp_servers_mcp_server_id_idx").on(table.mcpServerId),
+  ],
+);
+
+// ── Agent ↔ Skill Set associations ─────────────────────────────────────────
+
+export const agentSkillSets = pgTable(
+  "agent_skill_sets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    skillSetId: uuid("skill_set_id")
+      .notNull()
+      .references(() => skillSets.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("agent_skill_sets_agent_id_idx").on(table.agentId),
+    index("agent_skill_sets_skill_set_id_idx").on(table.skillSetId),
+  ],
+);
+
+// ── Repo Pipeline Stages ───────────────────────────────────────────────────
+
+export const repoPipelineStages = pgTable(
+  "repo_pipeline_stages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    repoId: uuid("repo_id")
+      .notNull()
+      .references(() => repos.id, { onDelete: "cascade" }),
+    stage: text("stage").notNull(), // "coding" | "review" | "qa" | custom
+    stageOrder: integer("stage_order").notNull(), // execution order: 0, 1, 2...
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("repo_pipeline_stages_repo_id_idx").on(table.repoId),
+    index("repo_pipeline_stages_agent_id_idx").on(table.agentId),
   ],
 );

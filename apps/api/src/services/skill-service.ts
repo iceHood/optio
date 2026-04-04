@@ -142,6 +142,50 @@ export async function getSkillsForTask(
 }
 
 /**
+ * Get skills for a task that uses an agent profile.
+ * Merges agent's skill sets with repo/global skills.
+ * Agent skill set skills override repo-scoped, which override global.
+ */
+export async function getSkillsForAgent(
+  agentId: string,
+  repoUrl: string,
+  workspaceId?: string | null,
+): Promise<CustomSkillConfig[]> {
+  // First get the base repo/global skills
+  const base = await getSkillsForTask(repoUrl, workspaceId);
+  const byName = new Map<string, CustomSkillConfig>();
+  for (const s of base) {
+    byName.set(s.name, s);
+  }
+
+  // Fetch agent's skill set IDs and get their skills
+  try {
+    const { getAgentSkillSetIds } = await import("./agent-service.js");
+    const { getCustomSkillsFromSkillSetIds } = await import("./skill-set-service.js");
+    const skillSetIds = await getAgentSkillSetIds(agentId);
+    if (skillSetIds.length > 0) {
+      const agentSkills = await getCustomSkillsFromSkillSetIds(skillSetIds);
+      for (const skill of agentSkills) {
+        // Agent skills override by name
+        byName.set(skill.name, {
+          id: "",
+          name: skill.name,
+          prompt: skill.prompt,
+          scope: "agent",
+          enabled: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    }
+  } catch {
+    // agent or skill-set service not available
+  }
+
+  return Array.from(byName.values());
+}
+
+/**
  * Build setup files for custom skills.
  * If the skill has a `files` array (from zip/skill upload), all files are included.
  * Otherwise, the prompt is written as a single .claude/commands/{name}.md file.

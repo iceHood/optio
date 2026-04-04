@@ -16,11 +16,12 @@ vi.mock("../db/client.js", () => ({
 }));
 
 vi.mock("../db/schema.js", () => ({
-  repos: { repoUrl: "repoUrl", workspaceId: "workspaceId" },
+  repos: { repoUrl: "repoUrl", workspaceId: "workspaceId", id: "id" },
   workspaces: { id: "id", slug: "slug" },
   tasks: {},
   taskEvents: {},
   taskLogs: {},
+  repoPipelineStages: { repoId: "repoId", stageOrder: "stageOrder" },
 }));
 
 const mockGetTask = vi.fn();
@@ -50,8 +51,23 @@ vi.mock("./subtask-service.js", () => ({
   queueSubtask: (...args: any[]) => mockQueueSubtask(...args),
 }));
 
+// Mock agent-config-resolver (dynamic import in launchReview)
+vi.mock("./agent-config-resolver.js", () => ({
+  resolveAgentConfig: vi.fn().mockResolvedValue({ agentType: "claude-code" }),
+}));
+
+// Mock getPipelineStages (dynamic import in launchReview)
+// repo-service uses dynamic import so this intercepts it
+vi.mock("./repo-service.js", () => ({
+  getRepoByUrl: vi.fn(),
+  getPipelineStages: vi.fn().mockResolvedValue([]),
+}));
+
 import { db } from "../db/client.js";
 import { launchReview } from "./review-service.js";
+import { getRepoByUrl } from "./repo-service.js";
+
+const mockGetRepoByUrl = vi.mocked(getRepoByUrl);
 
 // ── launchReview ────────────────────────────────────────────────────
 
@@ -99,12 +115,12 @@ describe("launchReview", () => {
 
     mockGetTask.mockResolvedValueOnce(parentTask);
 
-    // Repo config query (first call is getDefaultWorkspaceId, second is the repo lookup)
-    vi.mocked(db.select().from(undefined as any).where as any)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        { reviewPromptTemplate: null, testCommand: "npm test", reviewModel: "haiku" },
-      ]);
+    mockGetRepoByUrl.mockResolvedValueOnce({
+      id: "repo-1",
+      reviewPromptTemplate: null,
+      testCommand: "npm test",
+      reviewModel: "haiku",
+    } as any);
 
     const reviewSubtask = { id: "review-1", title: "Review: Implement feature X" };
     mockCreateSubtask.mockResolvedValueOnce(reviewSubtask);
@@ -157,17 +173,14 @@ describe("launchReview", () => {
 
     mockGetTask.mockResolvedValueOnce(parentTask);
 
-    // No repo config (first call is getDefaultWorkspaceId, second is the repo lookup)
-    vi.mocked(db.select().from(undefined as any).where as any)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    mockGetRepoByUrl.mockResolvedValueOnce(null);
 
     mockCreateSubtask.mockResolvedValueOnce({ id: "review-2" });
     mockTransitionTask.mockResolvedValueOnce({ id: "review-2", state: "queued" });
 
     await launchReview("task-2");
 
-    // Should use default model "sonnet"
+    // Should use default model "sonnet" (no repo config → resolver returns default)
     expect(mockQueueAdd).toHaveBeenCalledWith(
       "process-task",
       expect.objectContaining({
@@ -189,9 +202,7 @@ describe("launchReview", () => {
     };
 
     mockGetTask.mockResolvedValueOnce(parentTask);
-    vi.mocked(db.select().from(undefined as any).where as any)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    mockGetRepoByUrl.mockResolvedValueOnce(null);
 
     mockCreateSubtask.mockResolvedValueOnce({ id: "review-3" });
     mockTransitionTask.mockResolvedValueOnce({ id: "review-3" });

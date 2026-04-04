@@ -1089,4 +1089,58 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
+  // Agents
+  listAgents: () => request<{ agents: any[] }>("/api/agents"),
+
+  getAgent: (id: string) => request<{ agent: any }>(`/api/agents/${id}`),
+
+  createAgent: (data: Record<string, unknown>) =>
+    request<{ agent: any }>("/api/agents", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateAgent: (id: string, data: Record<string, unknown>) =>
+    request<{ agent: any }>(`/api/agents/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  deleteAgent: (id: string) => request<void>(`/api/agents/${id}`, { method: "DELETE" }),
+
+  getAgentMcpServers: (id: string) =>
+    request<{ mcpServerIds: string[] }>(`/api/agents/${id}/mcp-servers`),
+
+  setAgentMcpServers: (id: string, mcpServerIds: string[]) =>
+    request<{ mcpServerIds: string[] }>(`/api/agents/${id}/mcp-servers`, {
+      method: "PUT",
+      body: JSON.stringify({ mcpServerIds }),
+    }),
+
+  getAgentSkillSets: (id: string) =>
+    request<{ skillSetIds: string[] }>(`/api/agents/${id}/skill-sets`),
+
+  setAgentSkillSets: (id: string, skillSetIds: string[]) =>
+    request<{ skillSetIds: string[] }>(`/api/agents/${id}/skill-sets`, {
+      method: "PUT",
+      body: JSON.stringify({ skillSetIds }),
+    }),
+
+  // Pipeline Stages
+  getRepoPipeline: (repoId: string) => request<{ stages: any[] }>(`/api/repos/${repoId}/pipeline`),
+
+  setRepoPipeline: (
+    repoId: string,
+    stages: Array<{
+      stage: string;
+      stageOrder: number;
+      agentId?: string | null;
+      enabled?: boolean;
+    }>,
+  ) =>
+    request<{ stages: any[] }>(`/api/repos/${repoId}/pipeline`, {
+      method: "PUT",
+      body: JSON.stringify({ stages }),
+    }),
 };

@@ -228,3 +228,53 @@ export async function getCustomSkillsFromSkillSets(repoUrl: string): Promise<
 
   return skills;
 }
+
+/**
+ * Get custom skills from skill sets by IDs (used by agent config resolution).
+ */
+export async function getCustomSkillsFromSkillSetIds(skillSetIds: string[]): Promise<
+  Array<{
+    name: string;
+    prompt: string;
+    referenceFiles?: Array<{ path: string; content: string }> | null;
+  }>
+> {
+  if (skillSetIds.length === 0) return [];
+
+  const items = await db
+    .select()
+    .from(skillSetItems)
+    .where(inArray(skillSetItems.skillSetId, skillSetIds));
+
+  const skills: Array<{
+    name: string;
+    prompt: string;
+    referenceFiles?: Array<{ path: string; content: string }> | null;
+  }> = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    if (item.skillType === "custom") {
+      const [skill] = await db.select().from(customSkills).where(eq(customSkills.id, item.skillId));
+      if (skill && skill.enabled && !seen.has(skill.name)) {
+        seen.add(skill.name);
+        skills.push({ name: skill.name, prompt: skill.prompt });
+      }
+    } else if (item.skillType === "marketplace") {
+      const [skill] = await db
+        .select()
+        .from(marketplaceSkills)
+        .where(eq(marketplaceSkills.id, item.skillId));
+      if (skill && !seen.has(skill.name)) {
+        seen.add(skill.name);
+        skills.push({
+          name: skill.name,
+          prompt: skill.prompt,
+          referenceFiles: skill.referenceFiles as Array<{ path: string; content: string }> | null,
+        });
+      }
+    }
+  }
+
+  return skills;
+}

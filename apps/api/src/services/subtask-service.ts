@@ -181,6 +181,21 @@ export async function onSubtaskComplete(subtaskId: string) {
     if (anyApproved && parent.prUrl) {
       logger.info({ taskId: parent.id }, "All blocking subtasks complete, review approved");
 
+      // Check for next pipeline stage (e.g., QA after review)
+      try {
+        const { triggerNextStage } = await import("./pipeline-stage-service.js");
+        const nextStageId = await triggerNextStage(parent.id, "review");
+        if (nextStageId) {
+          logger.info(
+            { taskId: parent.id, nextStageId },
+            "Pipeline: triggered next stage after review",
+          );
+          return; // Don't auto-merge yet — wait for the next stage to complete
+        }
+      } catch {
+        // pipeline-stage-service not available or no stages configured
+      }
+
       // Auto-merge if enabled on the repo
       const { getRepoByUrl } = await import("./repo-service.js");
       const repoConfig = await getRepoByUrl(parent.repoUrl);

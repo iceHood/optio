@@ -31,6 +31,7 @@ function useMainNav() {
     { href: "/tasks", label: "Tasks", icon: ListTodo },
     { href: "/sessions", label: "Sessions", icon: Terminal },
     { href: "/repos", label: "Repos", icon: FolderGit2 },
+    { href: "/agents", label: "Agents", icon: Bot },
     {
       href: "/cluster",
       label: runtime === "docker" ? "Infrastructure" : "Cluster",

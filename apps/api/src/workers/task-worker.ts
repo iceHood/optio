@@ -212,8 +212,24 @@ export function startTaskWorker() {
         const task = await taskService.getTask(taskId);
         if (!task) throw new Error(`Task not found: ${taskId}`);
 
+        // ── Resolve agent config (agent-centric pipeline) ──────────────
+        const { resolveAgentConfig } = await import("../services/agent-config-resolver.js");
+        const { getPipelineStages } = await import("../services/repo-service.js");
+        const pipelineStages = repoConfig ? await getPipelineStages(repoConfig.id) : [];
+        const isReviewType =
+          !!reviewOverride || task.taskType === "review" || task.taskType === "pr_review";
+        const resolved = await resolveAgentConfig(
+          isReviewType ? "review" : (task.taskType ?? "coding"),
+          repoConfig,
+          {
+            agentId: (task as any).agentId ?? null,
+            pipelineStages,
+            reviewModelOverride: reviewOverride?.claudeModel,
+          },
+        );
+
         // Get agent adapter and build config
-        const adapter = getAdapter(task.agentType);
+        const adapter = getAdapter(resolved.agentType);
         const claudeAuthMode =
           ((await retrieveSecretWithFallback("CLAUDE_AUTH_MODE", "global", taskWorkspaceId).catch(
             () => null,
@@ -264,8 +280,6 @@ export function startTaskWorker() {
         const finalRenderedPrompt = reviewOverride?.renderedPrompt ?? renderedPrompt;
         const finalTaskFileContent = reviewOverride?.taskFileContent ?? taskFileContent;
         const finalTaskFilePath = reviewOverride?.taskFilePath ?? taskFilePath;
-        const finalClaudeModel =
-          reviewOverride?.claudeModel ?? repoConfig?.claudeModel ?? undefined;
 
         const agentConfig = adapter.buildContainerConfig({
           taskId: task.id,
@@ -279,21 +293,23 @@ export function startTaskWorker() {
           renderedPrompt: finalRenderedPrompt,
           taskFileContent: finalTaskFileContent,
           taskFilePath: finalTaskFilePath,
-          claudeModel: finalClaudeModel,
-          claudeContextWindow: repoConfig?.claudeContextWindow ?? undefined,
-          claudeThinking: repoConfig?.claudeThinking ?? undefined,
-          claudeEffort: repoConfig?.claudeEffort ?? undefined,
+          claudeModel: resolved.model,
+          claudeContextWindow: resolved.contextWindow,
+          claudeThinking: resolved.thinking,
+          claudeEffort: resolved.effort,
           copilotModel: repoConfig?.copilotModel ?? undefined,
           copilotEffort: repoConfig?.copilotEffort ?? undefined,
         });
 
         // ── MCP servers & custom skills injection ────────────────────
-        const { getMcpServersForTask, buildMcpJsonContent } =
+        const { getMcpServersForTask, getMcpServersForAgent, buildMcpJsonContent } =
           await import("../services/mcp-server-service.js");
-        const { getSkillsForTask, buildSkillSetupFiles } =
+        const { getSkillsForTask, getSkillsForAgent, buildSkillSetupFiles } =
           await import("../services/skill-service.js");
 
-        const mcpServers = await getMcpServersForTask(task.repoUrl, taskWorkspaceId);
+        const mcpServers = resolved.agentId
+          ? await getMcpServersForAgent(resolved.agentId, task.repoUrl, taskWorkspaceId)
+          : await getMcpServersForTask(task.repoUrl, taskWorkspaceId);
         if (mcpServers.length > 0) {
           const mcpJsonContent = await buildMcpJsonContent(mcpServers, task.repoUrl);
           agentConfig.setupFiles = agentConfig.setupFiles ?? [];
@@ -312,7 +328,9 @@ export function startTaskWorker() {
           log.info({ count: mcpServers.length }, "Injecting MCP servers");
         }
 
-        const skills = await getSkillsForTask(task.repoUrl, taskWorkspaceId);
+        const skills = resolved.agentId
+          ? await getSkillsForAgent(resolved.agentId, task.repoUrl, taskWorkspaceId)
+          : await getSkillsForTask(task.repoUrl, taskWorkspaceId);
         if (skills.length > 0) {
           agentConfig.setupFiles = agentConfig.setupFiles ?? [];
           const skillFiles = buildSkillSetupFiles(skills);
@@ -376,12 +394,14 @@ export function startTaskWorker() {
           allEnv.OPTIO_RESTART_FROM_BRANCH = "true";
         }
 
-        // Inject repo-level setup config into pod env
-        if (repoConfig?.extraPackages) {
-          allEnv.OPTIO_EXTRA_PACKAGES = repoConfig.extraPackages;
+        // Inject repo/agent-level setup config into pod env
+        const effectiveExtraPackages = resolved.extraPackages ?? repoConfig?.extraPackages;
+        const effectiveSetupCommands = resolved.setupCommands ?? repoConfig?.setupCommands;
+        if (effectiveExtraPackages) {
+          allEnv.OPTIO_EXTRA_PACKAGES = effectiveExtraPackages;
         }
-        if (repoConfig?.setupCommands) {
-          allEnv.OPTIO_SETUP_COMMANDS = repoConfig.setupCommands;
+        if (effectiveSetupCommands) {
+          allEnv.OPTIO_SETUP_COMMANDS = effectiveSetupCommands;
         }
 
         // For max-subscription mode, fetch the OAuth token from the auth proxy
@@ -440,9 +460,8 @@ export function startTaskWorker() {
         // Get or create a repo pod (with multi-pod scheduling)
         log.info("Getting repo pod");
         const isRetry = (task.retryCount ?? 0) > 0;
-        const imageConfig = repoConfig
-          ? { preset: (repoConfig.imagePreset ?? "base") as PresetImageId }
-          : undefined;
+        const effectiveImagePreset = resolved.imagePreset ?? repoConfig?.imagePreset ?? "base";
+        const imageConfig = { preset: effectiveImagePreset as PresetImageId };
         const pod = await repoPool.getOrCreateRepoPod(
           task.repoUrl,
           task.repoBranch,
@@ -465,6 +484,10 @@ export function startTaskWorker() {
         log.info({ podName: pod.podName, instanceIndex: pod.instanceIndex }, "Repo pod ready");
 
         await taskService.updateTaskContainer(taskId, pod.podName ?? pod.podId ?? pod.id);
+        // Store resolved agent ID on the task for audit tracking
+        if (resolved.agentId) {
+          await db.update(tasks).set({ agentId: resolved.agentId }).where(eq(tasks.id, taskId));
+        }
         await taskService.transitionTask(taskId, TaskState.RUNNING, "worktree_created");
         log.info("Running agent in worktree");
 
@@ -496,12 +519,12 @@ export function startTaskWorker() {
         // Build the agent command based on type
         const isReviewTask =
           !!reviewOverride || task.taskType === "review" || task.taskType === "pr_review";
-        const agentCommand = buildAgentCommand(task.agentType, allEnv, {
+        const agentCommand = buildAgentCommand(resolved.agentType, allEnv, {
           resumeSessionId,
           resumePrompt,
           isReview: isReviewTask,
-          maxTurnsCoding: repoConfig?.maxTurnsCoding ?? undefined,
-          maxTurnsReview: repoConfig?.maxTurnsReview ?? undefined,
+          maxTurnsCoding: resolved.maxTurns ?? repoConfig?.maxTurnsCoding ?? undefined,
+          maxTurnsReview: resolved.maxTurns ?? repoConfig?.maxTurnsReview ?? undefined,
         });
 
         // Execute the task in the repo pod via worktree

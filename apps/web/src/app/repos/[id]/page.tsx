@@ -886,6 +886,9 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
         </PipelineStage>
       </section>
 
+      {/* Pipeline Agents */}
+      <PipelineAgents repoId={id} />
+
       {/* Default Agent */}
       <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
         <h2 className="text-sm font-medium">Default Agent</h2>
@@ -1639,6 +1642,138 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
         </button>
       </div>
     </div>
+  );
+}
+
+function PipelineAgents({ repoId }: { repoId: string }) {
+  const [stages, setStages] = useState<any[]>([]);
+  const [agents, setAgents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    Promise.all([api.getRepoPipeline(repoId), api.listAgents()])
+      .then(([pipelineRes, agentsRes]) => {
+        setStages(
+          pipelineRes.stages.length > 0
+            ? pipelineRes.stages
+            : [
+                { stage: "coding", stageOrder: 0, agentId: null, enabled: true },
+                { stage: "review", stageOrder: 1, agentId: null, enabled: true },
+              ],
+        );
+        setAgents(agentsRes.agents);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [repoId]);
+
+  const updateStageAgent = (index: number, agentId: string | null) => {
+    setStages((prev) => prev.map((s, i) => (i === index ? { ...s, agentId } : s)));
+  };
+
+  const addStage = () => {
+    setStages((prev) => [
+      ...prev,
+      { stage: "qa", stageOrder: prev.length, agentId: null, enabled: true },
+    ]);
+  };
+
+  const removeStage = (index: number) => {
+    setStages((prev) =>
+      prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, stageOrder: i })),
+    );
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await api.setRepoPipeline(
+        repoId,
+        stages.map((s, i) => ({
+          stage: s.stage,
+          stageOrder: i,
+          agentId: s.agentId || null,
+          enabled: s.enabled,
+        })),
+      );
+      setStages(res.stages);
+      toast.success("Pipeline saved");
+    } catch {
+      toast.error("Failed to save pipeline");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || agents.length === 0) return null;
+
+  return (
+    <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-medium">Pipeline Agents</h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            Assign specialized agents to each pipeline stage. Leave empty to use repo defaults.
+          </p>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-3 py-1.5 rounded-md bg-primary text-white text-xs hover:bg-primary-hover disabled:opacity-50 transition-colors"
+        >
+          {saving ? "Saving..." : "Save Pipeline"}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {stages.map((stage: any, i: number) => (
+          <div
+            key={i}
+            className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border"
+          >
+            <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-medium flex items-center justify-center shrink-0">
+              {i + 1}
+            </span>
+            <input
+              type="text"
+              value={stage.stage}
+              onChange={(e) =>
+                setStages((prev) =>
+                  prev.map((s, j) => (j === i ? { ...s, stage: e.target.value } : s)),
+                )
+              }
+              className="w-24 px-2 py-1 rounded bg-bg-card border border-border text-sm"
+            />
+            <span className="text-text-muted text-xs">&rarr;</span>
+            <select
+              value={stage.agentId ?? ""}
+              onChange={(e) => updateStageAgent(i, e.target.value || null)}
+              className="flex-1 px-2 py-1 rounded bg-bg-card border border-border text-sm"
+            >
+              <option value="">No agent (use repo defaults)</option>
+              {agents.map((a: any) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.model ?? "default"})
+                </option>
+              ))}
+            </select>
+            {stages.length > 1 && (
+              <button
+                onClick={() => removeStage(i)}
+                className="text-text-muted hover:text-error transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button onClick={addStage} className="text-xs text-primary hover:underline">
+        + Add stage
+      </button>
+    </section>
   );
 }
 
