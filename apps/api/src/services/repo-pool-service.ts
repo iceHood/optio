@@ -260,11 +260,13 @@ spec:
   try {
     const podName = generateRepoPodName(repoUrl);
     podNameForCleanup = podName;
-    // Docker mode: use named volume via hostPath (dockerode Binds).
-    // K8s mode: use PersistentVolumeClaim.
+    // Docker mode: mount named volume at /workspace so that /home/agent/.claude
+    // can be separately mounted for claude-cli auth (Docker volumes on /home/agent
+    // would shadow any bind mounts to subdirectories).
+    // K8s mode: PVC at /home/agent as before (tools are installed there).
     const volumes: VolumeMount[] | undefined = storageReady
       ? isDockerRuntime()
-        ? [{ hostPath: volumeName, mountPath: "/home/agent" }]
+        ? [{ hostPath: volumeName, mountPath: "/workspace" }]
         : [{ persistentVolumeClaim: volumeName, mountPath: "/home/agent" }]
       : undefined;
 

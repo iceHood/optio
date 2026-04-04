@@ -86,6 +86,9 @@ services:
       # Claude Code auth (for claude -p headless mode)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+
+      # Extra volumes to mount in worker containers (e.g., ~/.claude for claude-cli)
+      OPTIO_AGENT_EXTRA_VOLUMES: ${OPTIO_AGENT_EXTRA_VOLUMES:-}
     volumes:
       # Docker socket so the API can manage worker containers
       - /var/run/docker.sock:/var/run/docker.sock

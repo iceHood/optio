@@ -126,6 +126,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
       Tty: opts?.tty ?? true,
     });
 
+    const tty = opts?.tty ?? true;
     const stdout = new Readable({
       read() {},
     });
@@ -133,9 +134,43 @@ export class DockerContainerRuntime implements ContainerRuntime {
       read() {},
     });
 
-    duplex.on("data", (chunk: Buffer) => {
-      stdout.push(chunk);
-    });
+    if (tty) {
+      // TTY mode: raw stream, no multiplexing headers
+      duplex.on("data", (chunk: Buffer) => {
+        stdout.push(chunk);
+      });
+    } else {
+      // Non-TTY mode: Docker multiplexes stdout/stderr with 8-byte frame headers
+      // Format: [stream_type(1) | 0x00(3) | payload_size(4, big-endian)] + payload
+      // stream_type: 1 = stdout, 2 = stderr
+      let headerBuf = Buffer.alloc(0);
+      duplex.on("data", (chunk: Buffer) => {
+        let buf = Buffer.concat([headerBuf, chunk]);
+        headerBuf = Buffer.alloc(0);
+
+        while (buf.length >= 8) {
+          const streamType = buf[0];
+          const payloadSize = buf.readUInt32BE(4);
+          if (buf.length < 8 + payloadSize) {
+            // Incomplete frame, buffer for next chunk
+            headerBuf = buf;
+            break;
+          }
+          const payload = buf.subarray(8, 8 + payloadSize);
+          if (streamType === 2) {
+            stderr.push(payload);
+          } else {
+            stdout.push(payload);
+          }
+          buf = buf.subarray(8 + payloadSize);
+        }
+        // Leftover partial header
+        if (buf.length > 0 && headerBuf.length === 0) {
+          headerBuf = buf;
+        }
+      });
+    }
+
     duplex.on("end", () => {
       stdout.push(null);
       stderr.push(null);
