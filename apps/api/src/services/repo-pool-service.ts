@@ -650,9 +650,16 @@ export async function execTaskInRepoPod(
     `mkdir -p "$(dirname "$EXCLUDE_FILE")"`,
     `grep -qxF '.optio/' "$EXCLUDE_FILE" 2>/dev/null || echo '.optio/' >> "$EXCLUDE_FILE"`,
     `grep -qxF '.optio-run-token' "$EXCLUDE_FILE" 2>/dev/null || echo '.optio-run-token' >> "$EXCLUDE_FILE"`,
-    // EXIT trap: preserve the worktree — cleanup is handled by the cleanup worker
-    // based on task state. Only clean up Claude Code's internal worktrees (-wt suffix).
-    `trap 'cd /workspace/repo 2>/dev/null; git worktree remove --force /workspace/tasks/${taskId}-wt 2>/dev/null || true; git worktree prune 2>/dev/null || true' EXIT`,
+    // Pre-authenticate gh CLI so Claude Code doesn't attempt interactive `gh auth login`.
+    // Without this, Claude's Bash tool may run `gh auth login` which hangs waiting for
+    // interactive input, preventing the exec stream from ever closing.
+    `if [ -n "\${GITHUB_TOKEN:-}" ]; then`,
+    `  echo "\${GITHUB_TOKEN}" | gh auth login --with-token 2>/dev/null && echo "[optio] gh CLI authenticated" || true`,
+    `fi`,
+    // EXIT trap: clean up worktrees AND kill any orphaned child processes.
+    // Without the process kill, hung child processes (e.g. interactive gh auth login)
+    // keep the exec session's file descriptors open, preventing stream closure.
+    `trap 'cd /workspace/repo 2>/dev/null; git worktree remove --force /workspace/tasks/${taskId}-wt 2>/dev/null || true; git worktree prune 2>/dev/null || true; kill 0 2>/dev/null || true' EXIT`,
     `set +e`,
     ...agentCommand,
     `AGENT_EXIT=$?`,
