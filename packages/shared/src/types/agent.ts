@@ -113,7 +113,12 @@ export interface UpdateAgentInput {
   promptTemplate?: string | null;
 }
 
-/** Resolved agent config used at task execution time */
+/** Resolved agent config used at task execution time.
+ *
+ * When agentId is set, the agent is the authoritative source for AI behavior.
+ * Image/environment comes from the repo, not the agent.
+ * extraPackages/setupCommands are additive (repo base + agent additions).
+ */
 export interface ResolvedAgentConfig {
   agentId?: string;
   agentType: string;
@@ -121,10 +126,9 @@ export interface ResolvedAgentConfig {
   contextWindow?: string;
   thinking?: boolean;
   effort?: string;
-  imagePreset?: string;
-  customDockerfile?: string;
-  extraPackages?: string;
-  setupCommands?: string;
+  // No imagePreset — repo owns the execution environment
+  extraPackages?: string; // Agent-specific additions (additive with repo)
+  setupCommands?: string; // Agent-specific additions (additive with repo)
   maxTurns?: number;
   promptTemplate?: string;
 }

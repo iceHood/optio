@@ -120,41 +120,25 @@ export async function getMcpServersForTask(
 }
 
 /**
- * Get MCP servers associated with an agent and merge with repo/global servers.
- * Agent servers take priority over repo-scoped, which take priority over global.
+ * Get MCP servers for an agent — returns ONLY the agent's associated servers.
+ * Agent is a self-contained unit: its MCP config is authoritative, not merged
+ * with repo/global servers. Zero associations = zero MCP servers.
  */
-export async function getMcpServersForAgent(
-  agentId: string,
-  repoUrl: string,
-  workspaceId?: string | null,
-): Promise<McpServerConfig[]> {
-  // First get the base repo/global servers
-  const base = await getMcpServersForTask(repoUrl, workspaceId);
-  const byName = new Map<string, McpServerConfig>();
-  for (const s of base) {
-    byName.set(s.name, s);
-  }
-
-  // Fetch agent-associated MCP server IDs
+export async function getMcpServersForAgent(agentId: string): Promise<McpServerConfig[]> {
   const assocRows = await db
     .select({ mcpServerId: agentMcpServers.mcpServerId })
     .from(agentMcpServers)
     .where(eq(agentMcpServers.agentId, agentId));
 
-  if (assocRows.length > 0) {
-    const ids = assocRows.map((r) => r.mcpServerId);
-    const agentServerRows = await db
-      .select()
-      .from(mcpServers)
-      .where(and(eq(mcpServers.enabled, true), inArray(mcpServers.id, ids)));
+  if (assocRows.length === 0) return [];
 
-    // Agent servers override by name
-    for (const row of agentServerRows) {
-      byName.set(row.name, mapRow(row));
-    }
-  }
+  const ids = assocRows.map((r) => r.mcpServerId);
+  const rows = await db
+    .select()
+    .from(mcpServers)
+    .where(and(eq(mcpServers.enabled, true), inArray(mcpServers.id, ids)));
 
-  return Array.from(byName.values());
+  return rows.map(mapRow);
 }
 
 /**

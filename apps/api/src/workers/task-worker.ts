@@ -297,8 +297,13 @@ export function startTaskWorker() {
           claudeContextWindow: resolved.contextWindow,
           claudeThinking: resolved.thinking,
           claudeEffort: resolved.effort,
-          copilotModel: repoConfig?.copilotModel ?? undefined,
-          copilotEffort: repoConfig?.copilotEffort ?? undefined,
+          // Copilot settings: agent uses its model/effort; repo fallback without agent
+          copilotModel: resolved.agentId
+            ? (resolved.model ?? undefined)
+            : (repoConfig?.copilotModel ?? undefined),
+          copilotEffort: resolved.agentId
+            ? (resolved.effort ?? undefined)
+            : (repoConfig?.copilotEffort ?? undefined),
         });
 
         // ── MCP servers & custom skills injection ────────────────────
@@ -307,8 +312,9 @@ export function startTaskWorker() {
         const { getSkillsForTask, getSkillsForAgent, buildSkillSetupFiles } =
           await import("../services/skill-service.js");
 
+        // Agent = self-contained MCP config; no agent = repo/global MCP
         const mcpServers = resolved.agentId
-          ? await getMcpServersForAgent(resolved.agentId, task.repoUrl, taskWorkspaceId)
+          ? await getMcpServersForAgent(resolved.agentId)
           : await getMcpServersForTask(task.repoUrl, taskWorkspaceId);
         if (mcpServers.length > 0) {
           const mcpJsonContent = await buildMcpJsonContent(mcpServers, task.repoUrl);
@@ -328,8 +334,9 @@ export function startTaskWorker() {
           log.info({ count: mcpServers.length }, "Injecting MCP servers");
         }
 
+        // Agent = self-contained skill config; no agent = repo/global skills
         const skills = resolved.agentId
-          ? await getSkillsForAgent(resolved.agentId, task.repoUrl, taskWorkspaceId)
+          ? await getSkillsForAgent(resolved.agentId)
           : await getSkillsForTask(task.repoUrl, taskWorkspaceId);
         if (skills.length > 0) {
           agentConfig.setupFiles = agentConfig.setupFiles ?? [];
@@ -394,9 +401,13 @@ export function startTaskWorker() {
           allEnv.OPTIO_RESTART_FROM_BRANCH = "true";
         }
 
-        // Inject repo/agent-level setup config into pod env
-        const effectiveExtraPackages = resolved.extraPackages ?? repoConfig?.extraPackages;
-        const effectiveSetupCommands = resolved.setupCommands ?? repoConfig?.setupCommands;
+        // Inject setup config: repo base packages + agent additions (additive)
+        const repoPkgs = repoConfig?.extraPackages ?? "";
+        const agentPkgs = resolved.extraPackages ?? "";
+        const effectiveExtraPackages = [repoPkgs, agentPkgs].filter(Boolean).join(", ");
+        const repoSetup = repoConfig?.setupCommands ?? "";
+        const agentSetup = resolved.setupCommands ?? "";
+        const effectiveSetupCommands = [repoSetup, agentSetup].filter(Boolean).join(" && ");
         if (effectiveExtraPackages) {
           allEnv.OPTIO_EXTRA_PACKAGES = effectiveExtraPackages;
         }
@@ -460,7 +471,8 @@ export function startTaskWorker() {
         // Get or create a repo pod (with multi-pod scheduling)
         log.info("Getting repo pod");
         const isRetry = (task.retryCount ?? 0) > 0;
-        const effectiveImagePreset = resolved.imagePreset ?? repoConfig?.imagePreset ?? "base";
+        // Image comes from repo (repo = execution environment), not from agent
+        const effectiveImagePreset = repoConfig?.imagePreset ?? "base";
         const imageConfig = { preset: effectiveImagePreset as PresetImageId };
         const pod = await repoPool.getOrCreateRepoPod(
           task.repoUrl,
@@ -523,8 +535,13 @@ export function startTaskWorker() {
           resumeSessionId,
           resumePrompt,
           isReview: isReviewTask,
-          maxTurnsCoding: resolved.maxTurns ?? repoConfig?.maxTurnsCoding ?? undefined,
-          maxTurnsReview: resolved.maxTurns ?? repoConfig?.maxTurnsReview ?? undefined,
+          // Agent's maxTurns is authoritative; repo fallback only without agent
+          maxTurnsCoding: resolved.agentId
+            ? (resolved.maxTurns ?? undefined)
+            : (repoConfig?.maxTurnsCoding ?? undefined),
+          maxTurnsReview: resolved.agentId
+            ? (resolved.maxTurns ?? undefined)
+            : (repoConfig?.maxTurnsReview ?? undefined),
         });
 
         // Execute the task in the repo pod via worktree

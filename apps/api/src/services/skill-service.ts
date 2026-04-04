@@ -142,47 +142,30 @@ export async function getSkillsForTask(
 }
 
 /**
- * Get skills for a task that uses an agent profile.
- * Merges agent's skill sets with repo/global skills.
- * Agent skill set skills override repo-scoped, which override global.
+ * Get skills for an agent — returns ONLY the agent's associated skill set skills.
+ * Agent is a self-contained unit: its skill config is authoritative, not merged
+ * with repo/global skills. Zero skill sets = zero skills.
  */
-export async function getSkillsForAgent(
-  agentId: string,
-  repoUrl: string,
-  workspaceId?: string | null,
-): Promise<CustomSkillConfig[]> {
-  // First get the base repo/global skills
-  const base = await getSkillsForTask(repoUrl, workspaceId);
-  const byName = new Map<string, CustomSkillConfig>();
-  for (const s of base) {
-    byName.set(s.name, s);
-  }
-
-  // Fetch agent's skill set IDs and get their skills
+export async function getSkillsForAgent(agentId: string): Promise<CustomSkillConfig[]> {
   try {
     const { getAgentSkillSetIds } = await import("./agent-service.js");
     const { getCustomSkillsFromSkillSetIds } = await import("./skill-set-service.js");
     const skillSetIds = await getAgentSkillSetIds(agentId);
-    if (skillSetIds.length > 0) {
-      const agentSkills = await getCustomSkillsFromSkillSetIds(skillSetIds);
-      for (const skill of agentSkills) {
-        // Agent skills override by name
-        byName.set(skill.name, {
-          id: "",
-          name: skill.name,
-          prompt: skill.prompt,
-          scope: "agent",
-          enabled: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
-    }
-  } catch {
-    // agent or skill-set service not available
-  }
+    if (skillSetIds.length === 0) return [];
 
-  return Array.from(byName.values());
+    const agentSkills = await getCustomSkillsFromSkillSetIds(skillSetIds);
+    return agentSkills.map((skill) => ({
+      id: "",
+      name: skill.name,
+      prompt: skill.prompt,
+      scope: "agent",
+      enabled: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /**

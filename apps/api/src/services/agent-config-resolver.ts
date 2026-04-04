@@ -45,6 +45,11 @@ export async function resolveAgentConfig(
 
 /**
  * Load an agent profile and convert to ResolvedAgentConfig.
+ *
+ * When an agent is resolved, its config is AUTHORITATIVE — null fields mean
+ * "use system defaults", NOT "inherit from repo". The agent is a self-contained
+ * unit that fully defines the AI behavior. The repo only provides the execution
+ * environment (image, base packages).
  */
 async function loadAgentConfig(agentId: string): Promise<ResolvedAgentConfig | null> {
   const { getAgent } = await import("./agent-service.js");
@@ -54,12 +59,14 @@ async function loadAgentConfig(agentId: string): Promise<ResolvedAgentConfig | n
   return {
     agentId: agent.id,
     agentType: agent.agentType,
+    // All fields are from the agent only — no repo fallback.
+    // undefined = not set by agent → task-worker uses system defaults.
     model: agent.model ?? undefined,
     contextWindow: agent.contextWindow ?? undefined,
     thinking: agent.thinking ?? undefined,
     effort: agent.effort ?? undefined,
-    imagePreset: agent.imagePreset ?? undefined,
-    customDockerfile: agent.customDockerfile ?? undefined,
+    // Image is NOT set from agent — repo owns the execution environment.
+    // Agent's extraPackages/setupCommands are additive on top of repo's.
     extraPackages: agent.extraPackages ?? undefined,
     setupCommands: agent.setupCommands ?? undefined,
     maxTurns: agent.maxTurns ?? undefined,
@@ -82,6 +89,7 @@ function buildFromRepoConfig(
 
   const isReview = taskType === "review" || taskType === "pr_review";
 
+  // Repo fallback: no agent resolved, build config from repo fields (backward compat)
   return {
     agentType: repoConfig.defaultAgentType ?? "claude-code",
     model: isReview
@@ -90,10 +98,6 @@ function buildFromRepoConfig(
     contextWindow: repoConfig.claudeContextWindow ?? undefined,
     thinking: repoConfig.claudeThinking ?? undefined,
     effort: repoConfig.claudeEffort ?? undefined,
-    imagePreset: repoConfig.imagePreset ?? undefined,
-    customDockerfile: repoConfig.customDockerfile ?? undefined,
-    extraPackages: repoConfig.extraPackages ?? undefined,
-    setupCommands: repoConfig.setupCommands ?? undefined,
     maxTurns: isReview
       ? (repoConfig.maxTurnsReview ?? undefined)
       : (repoConfig.maxTurnsCoding ?? undefined),

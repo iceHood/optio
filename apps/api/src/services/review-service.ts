@@ -191,8 +191,10 @@ export async function launchReview(parentTaskId: string): Promise<string> {
         renderedPrompt,
         taskFileContent: reviewContext,
         taskFilePath: REVIEW_TASK_FILE_PATH,
-        // Use resolved review agent model (from pipeline agent or repo config)
-        claudeModel: resolved.model ?? repoConfig?.reviewModel ?? "sonnet",
+        // Agent model is authoritative; repo fallback only without pipeline agent
+        claudeModel: resolved.agentId
+          ? (resolved.model ?? undefined)
+          : (repoConfig?.reviewModel ?? "sonnet"),
       },
     },
     {
