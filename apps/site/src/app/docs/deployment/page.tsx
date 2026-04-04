@@ -199,7 +199,7 @@ ingress:
 
       <h2 className="mt-10 text-2xl font-bold text-text-heading">Install</h2>
       <div className="mt-3">
-        <CodeBlock title="terminal">{`helm install optio helm/optio \\
+        <CodeBlock title="terminal">{`helm install optio helm-legacy/optio \\
   -f values.production.yaml \\
   --namespace optio \\
   --create-namespace`}</CodeBlock>
@@ -209,12 +209,12 @@ ingress:
       <p className="mt-3 text-text-muted leading-relaxed">To upgrade an existing deployment:</p>
       <div className="mt-3">
         <CodeBlock title="terminal">{`# Upgrade with new values or chart version
-helm upgrade optio helm/optio \\
+helm upgrade optio helm-legacy/optio \\
   -f values.production.yaml \\
   --namespace optio
 
 # Or reuse existing values and only change specific settings
-helm upgrade optio helm/optio \\
+helm upgrade optio helm-legacy/optio \\
   --namespace optio \\
   --reuse-values \\
   --set api.replicas=3`}</CodeBlock>

@@ -1,4 +1,4 @@
-export type ClaudeAuthMode = "api-key" | "max-subscription";
+export type ClaudeAuthMode = "api-key" | "max-subscription" | "claude-cli";
 export type CodexAuthMode = "api-key" | "app-server";
 export type CopilotAuthMode = "github-token";
 

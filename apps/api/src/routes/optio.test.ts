@@ -51,11 +51,13 @@ async function buildTestAppWithAuth(): Promise<FastifyInstance> {
 describe("GET /api/optio/status", () => {
   let app: FastifyInstance;
   const originalEnv = process.env.OPTIO_POD_ENABLED;
+  const originalRuntime = process.env.OPTIO_RUNTIME;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     _resetCache();
     process.env.OPTIO_POD_ENABLED = "true";
+    process.env.OPTIO_RUNTIME = "kubernetes";
     app = await buildTestApp();
   });
 
@@ -64,6 +66,11 @@ describe("GET /api/optio/status", () => {
       delete process.env.OPTIO_POD_ENABLED;
     } else {
       process.env.OPTIO_POD_ENABLED = originalEnv;
+    }
+    if (originalRuntime === undefined) {
+      delete process.env.OPTIO_RUNTIME;
+    } else {
+      process.env.OPTIO_RUNTIME = originalRuntime;
     }
   });
 

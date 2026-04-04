@@ -3,7 +3,13 @@ import { eq, and, lt, sql, asc } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { repoPods, tasks } from "../db/schema.js";
 import { getRuntime } from "./container-service.js";
-import type { ContainerHandle, ContainerSpec, ExecSession, RepoImageConfig } from "@optio/shared";
+import type {
+  ContainerHandle,
+  ContainerSpec,
+  ExecSession,
+  RepoImageConfig,
+  VolumeMount,
+} from "@optio/shared";
 import {
   DEFAULT_AGENT_IMAGE,
   PRESET_IMAGES,
@@ -23,6 +29,8 @@ import {
 } from "./envoy-sidecar.js";
 
 const IDLE_TIMEOUT_MS = parseInt(process.env.OPTIO_REPO_POD_IDLE_MS ?? "600000", 10); // 10 min default
+const RUNTIME_TYPE = (process.env.OPTIO_RUNTIME ?? "docker") as "docker" | "kubernetes";
+const isDockerRuntime = () => RUNTIME_TYPE === "docker";
 
 export interface RepoPod {
   id: string;
@@ -206,24 +214,30 @@ async function createRepoPod(
   const rt = getRuntime();
   const image = resolveImage(imageConfig);
 
-  const pvcSuffix = instanceIndex > 0 ? `-${instanceIndex}` : "";
-  const pvcName = `optio-home-${repoUrl.replace(/[^a-zA-Z0-9]/g, "-").slice(0, 40)}${pvcSuffix}`;
-  let pvcReady = false;
-  try {
-    const { execFile } = await import("node:child_process");
-    const { promisify } = await import("node:util");
-    const execFileAsync = promisify(execFile);
+  const volumeSuffix = instanceIndex > 0 ? `-${instanceIndex}` : "";
+  const volumeName = `optio-home-${repoUrl.replace(/[^a-zA-Z0-9]/g, "-").slice(0, 40)}${volumeSuffix}`;
+  let storageReady = false;
 
-    // Check if PVC already exists
+  if (isDockerRuntime()) {
+    // Docker mode: named volumes are auto-created by Docker on first use.
+    // We just mark it ready — the volume name is passed via the spec.
+    storageReady = true;
+    logger.info({ volumeName }, "Using Docker named volume for repo pod home directory");
+  } else {
+    // Kubernetes mode: create a PersistentVolumeClaim via kubectl
     try {
-      await execFileAsync("kubectl", ["get", "pvc", pvcName, "-n", "optio"]);
-      pvcReady = true;
-    } catch {
-      // PVC doesn't exist, create it
-      const pvcManifest = `apiVersion: v1
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+
+      try {
+        await execFileAsync("kubectl", ["get", "pvc", volumeName, "-n", "optio"]);
+        storageReady = true;
+      } catch {
+        const pvcManifest = `apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ${pvcName}
+  name: ${volumeName}
   namespace: optio
   labels:
     managed-by: optio
@@ -233,22 +247,41 @@ spec:
   resources:
     requests:
       storage: 5Gi`;
-      // Use bash -c with heredoc since execFile doesn't support stdin input
-      await execFileAsync("bash", ["-c", `echo '${pvcManifest}' | kubectl apply -f - -n optio`]);
-      pvcReady = true;
-      logger.info({ pvcName }, "Created PVC for repo pod home directory");
+        await execFileAsync("bash", ["-c", `echo '${pvcManifest}' | kubectl apply -f - -n optio`]);
+        storageReady = true;
+        logger.info({ volumeName }, "Created PVC for repo pod home directory");
+      }
+    } catch (err) {
+      logger.warn({ err, volumeName }, "Failed to create PVC, pod will use ephemeral storage");
     }
-  } catch (err) {
-    logger.warn({ err, pvcName }, "Failed to create PVC, pod will use ephemeral storage");
   }
 
   let podNameForCleanup: string | undefined;
   try {
     const podName = generateRepoPodName(repoUrl);
     podNameForCleanup = podName;
-    const volumes = pvcReady
-      ? [{ persistentVolumeClaim: pvcName, mountPath: "/home/agent" }]
+    // Docker mode: use named volume via hostPath (dockerode Binds).
+    // K8s mode: use PersistentVolumeClaim.
+    const volumes: VolumeMount[] | undefined = storageReady
+      ? isDockerRuntime()
+        ? [{ hostPath: volumeName, mountPath: "/home/agent" }]
+        : [{ persistentVolumeClaim: volumeName, mountPath: "/home/agent" }]
       : undefined;
+
+    // Support extra host volumes (e.g., ~/.claude for claude-cli auth mode)
+    // Format: "host_path:container_path:options" (comma-separated for multiple)
+    const extraVolumes = process.env.OPTIO_AGENT_EXTRA_VOLUMES;
+    if (extraVolumes && isDockerRuntime() && volumes) {
+      for (const mapping of extraVolumes.split(",")) {
+        const parts = mapping.trim().split(":");
+        if (parts.length >= 2) {
+          const hostPath = parts[0].replace(/^~/, process.env.HOME ?? "/root");
+          const mountPath = parts[1];
+          const readOnly = parts[2] === "ro";
+          volumes.push({ hostPath, mountPath, readOnly });
+        }
+      }
+    }
 
     // Build base agent env, stripping proxied secrets when secret proxy is enabled
     const agentEnv: Record<string, string> = {
@@ -302,12 +335,24 @@ spec:
       };
 
       const envoyConfig = generateEnvoyConfig(proxySecrets);
-
-      // Create a ConfigMap for the Envoy config
       const configMapName = `envoy-config-${podName}`;
-      await createEnvoyConfigMap(configMapName, envoyConfig).catch((err) => {
-        logger.warn({ err, podName }, "Failed to create Envoy ConfigMap");
-      });
+
+      if (isDockerRuntime()) {
+        // Docker mode: write config to a temp file, mount as volume
+        const { mkdtemp, writeFile } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const tmpDir = await mkdtemp(join("/tmp", "optio-envoy-"));
+        await writeFile(join(tmpDir, "envoy.yaml"), envoyConfig);
+        // Store path so the volume mount can reference it
+        spec.extraVolumes = spec.extraVolumes ?? [];
+        spec.extraVolumes.push({ raw: { hostPath: tmpDir, name: "envoy-config-dir" } });
+        logger.info({ podName, configDir: tmpDir }, "Created Envoy config file for Docker mode");
+      } else {
+        // K8s mode: create a ConfigMap via kubectl
+        await createEnvoyConfigMap(configMapName, envoyConfig).catch((err) => {
+          logger.warn({ err, podName }, "Failed to create Envoy ConfigMap");
+        });
+      }
 
       spec.sidecarContainers = [
         { raw: buildEnvoySidecarContainer({ envoyImage, imagePullPolicy: pullPolicy }) },
@@ -321,21 +366,24 @@ spec:
           }),
         },
       ];
-      spec.extraVolumes = buildEnvoyVolumes(envoyConfig).map((v) => {
-        // Patch the configMap volume to use the actual ConfigMap name
-        if (v.name === "envoy-config") {
-          return {
-            raw: {
-              name: "envoy-config",
-              configMap: {
-                name: configMapName,
-                items: [{ key: "envoy.yaml", path: "envoy.yaml" }],
+      if (!isDockerRuntime()) {
+        // K8s mode: use ConfigMap volumes
+        spec.extraVolumes = buildEnvoyVolumes(envoyConfig).map((v) => {
+          if (v.name === "envoy-config") {
+            return {
+              raw: {
+                name: "envoy-config",
+                configMap: {
+                  name: configMapName,
+                  items: [{ key: "envoy.yaml", path: "envoy.yaml" }],
+                },
               },
-            },
-          };
-        }
-        return { raw: v };
-      });
+            };
+          }
+          return { raw: v };
+        });
+      }
+      // Docker mode: extraVolumes already set above with hostPath
       spec.extraVolumeMounts = [getAgentCaVolumeMount()];
 
       // Strip raw secret values from the agent container env
@@ -348,14 +396,21 @@ spec:
 
     const handle = await rt.create(spec);
 
-    // Create a K8s NetworkPolicy if restricted mode is enabled
+    // Create a K8s NetworkPolicy if restricted mode is enabled (K8s only)
     if (networkPolicy === "restricted") {
-      await applyRestrictedNetworkPolicy(podName).catch((err) => {
-        logger.warn(
-          { err, podName },
-          "Failed to apply NetworkPolicy — pod will run without egress restrictions",
+      if (isDockerRuntime()) {
+        logger.info(
+          { podName },
+          "Network policy not applied — Docker mode uses container network isolation instead",
         );
-      });
+      } else {
+        await applyRestrictedNetworkPolicy(podName).catch((err) => {
+          logger.warn(
+            { err, podName },
+            "Failed to apply NetworkPolicy — pod will run without egress restrictions",
+          );
+        });
+      }
     }
 
     await db
@@ -401,8 +456,10 @@ spec:
       try {
         const rtForCleanup = getRuntime();
         await rtForCleanup.destroy({ id: podNameForCleanup, name: podNameForCleanup });
-        await deleteNetworkPolicy(podNameForCleanup).catch(() => {});
-        await deleteEnvoyConfigMap(podNameForCleanup).catch(() => {});
+        if (!isDockerRuntime()) {
+          await deleteNetworkPolicy(podNameForCleanup).catch(() => {});
+          await deleteEnvoyConfigMap(podNameForCleanup).catch(() => {});
+        }
         logger.info({ podName: podNameForCleanup }, "Cleaned up failed pod");
       } catch (cleanupErr) {
         logger.warn(
@@ -659,8 +716,10 @@ export async function cleanupIdleRepoPods(): Promise<number> {
     for (const pod of sorted) {
       try {
         if (pod.podName) {
-          await deleteNetworkPolicy(pod.podName).catch(() => {});
-          await deleteEnvoyConfigMap(pod.podName).catch(() => {});
+          if (!isDockerRuntime()) {
+            await deleteNetworkPolicy(pod.podName).catch(() => {});
+            await deleteEnvoyConfigMap(pod.podName).catch(() => {});
+          }
           await rt.destroy({ id: pod.podId ?? pod.podName, name: pod.podName });
         }
         await db.delete(repoPods).where(eq(repoPods.id, pod.id));

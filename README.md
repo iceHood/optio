@@ -179,7 +179,7 @@ packages/
   ticket-providers/   GitHub Issues, Linear, Jira, Notion
 
 images/               Container Dockerfiles: base, node, python, go, rust, full
-helm/optio/           Helm chart for production Kubernetes deployment
+helm-legacy/optio/    Helm chart for Kubernetes deployment (legacy — see docker-compose.yml)
 scripts/              Setup, init, and entrypoint scripts
 ```
 
@@ -253,10 +253,32 @@ The secret must contain these keys: `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GI
 
 ## Production Deployment
 
-Optio ships with a Helm chart for production Kubernetes clusters:
+### Docker Compose (Recommended)
+
+The quickest way to run Optio locally or on a single server:
 
 ```bash
-helm install optio helm/optio \
+# 1. Build images
+docker build -t optio-api:latest -f Dockerfile.api .
+docker build -t optio-web:latest -f Dockerfile.web .
+./images/build.sh
+
+# 2. Configure
+cp .env.example .env
+# Edit .env — set ENCRYPTION_KEY, GITHUB_TOKEN, and auth mode
+
+# 3. Start
+docker compose up -d
+```
+
+Open http://localhost:3100 for the dashboard.
+
+### Kubernetes (Helm)
+
+For production Kubernetes deployments, a legacy Helm chart is available:
+
+```bash
+helm install optio helm-legacy/optio \
   --set encryption.key=$(openssl rand -hex 32) \
   --set postgresql.enabled=false \
   --set externalDatabase.url="postgres://..." \
@@ -266,7 +288,7 @@ helm install optio helm/optio \
   --set ingress.hosts[0].host=optio.example.com
 ```
 
-See the [Helm chart values](helm/optio/values.yaml) for full configuration options including OAuth providers, resource limits, and agent image settings.
+See the [Helm chart values](helm-legacy/optio/values.yaml) for full configuration options including OAuth providers, resource limits, and agent image settings.
 
 ## Tech Stack
 

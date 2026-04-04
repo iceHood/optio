@@ -4,4 +4,6 @@
 **/dist
 **/node_modules
 **/helm
+**/helm-legacy
+**/.bkit
 pnpm-lock.yaml

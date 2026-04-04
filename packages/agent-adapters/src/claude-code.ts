@@ -50,6 +50,14 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       const apiUrl = input.optioApiUrl ?? "http://host.docker.internal:4000";
       env.OPTIO_API_URL = apiUrl;
       // CLAUDE_CODE_OAUTH_TOKEN will be injected by the task worker after fetching from auth proxy
+    } else if (authMode === "claude-cli") {
+      // Claude CLI mode: uses Claude Code's own authentication (Pro/Max subscription).
+      // No API key or OAuth token needed — the CLI handles auth via its own
+      // credentials stored in ~/.claude/. The container must either:
+      //   1. Have ~/.claude/ volume-mounted from the host, or
+      //   2. Have been pre-authenticated via `claude /login`
+      // This mode is ideal for Docker Compose deployments where the host
+      // machine has an active Claude Pro/Max subscription.
     }
 
     // Claude Code settings

@@ -1,5 +1,4 @@
 import type { FastifyInstance } from "fastify";
-import { KubeConfig, CoreV1Api } from "@kubernetes/client-node";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
@@ -7,8 +6,9 @@ import * as optioActionService from "../services/optio-action-service.js";
 
 const NAMESPACE = "optio";
 const POD_ROLE_LABEL = "optio.pod-role=optio";
+const isDockerRuntime = () => (process.env.OPTIO_RUNTIME ?? "docker") === "docker";
 
-// Cache status to avoid hitting the K8s API on every poll.
+// Cache status to avoid hitting the K8s/Docker API on every poll.
 let cachedStatus: { ready: boolean; podName: string | null } | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 10_000;
@@ -17,12 +17,6 @@ const CACHE_TTL_MS = 10_000;
 export function _resetCache(): void {
   cachedStatus = null;
   cachedAt = 0;
-}
-
-function getK8sApi(): CoreV1Api {
-  const kc = new KubeConfig();
-  kc.loadFromDefault();
-  return kc.makeApiClient(CoreV1Api);
 }
 
 async function getOptioPodStatus(): Promise<{
@@ -35,29 +29,56 @@ async function getOptioPodStatus(): Promise<{
   }
 
   try {
-    const k8s = getK8sApi();
-    const res = await k8s.listNamespacedPod({
-      namespace: NAMESPACE,
-      labelSelector: POD_ROLE_LABEL,
-    });
+    if (isDockerRuntime()) {
+      // Docker mode: check for Optio-managed container with the right label via CLI
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      try {
+        const { stdout } = await execFileAsync("docker", [
+          "ps",
+          "--filter",
+          "label=optio.pod-role=optio",
+          "--format",
+          "{{.Names}}\t{{.State}}",
+        ]);
+        const line = stdout.trim().split("\n")[0];
+        if (!line) {
+          cachedStatus = { ready: false, podName: null };
+        } else {
+          const [name, state] = line.split("\t");
+          cachedStatus = { ready: state === "running", podName: name ?? null };
+        }
+      } catch {
+        cachedStatus = { ready: false, podName: null };
+      }
+    } else {
+      // Kubernetes mode
+      const { KubeConfig, CoreV1Api } = await import("@kubernetes/client-node");
+      const kc = new KubeConfig();
+      kc.loadFromDefault();
+      const k8s = kc.makeApiClient(CoreV1Api);
+      const res = await k8s.listNamespacedPod({
+        namespace: NAMESPACE,
+        labelSelector: POD_ROLE_LABEL,
+      });
 
-    const pods = res.items ?? [];
-    if (pods.length === 0) {
-      cachedStatus = { ready: false, podName: null };
-      cachedAt = now;
-      return cachedStatus;
+      const pods = res.items ?? [];
+      if (pods.length === 0) {
+        cachedStatus = { ready: false, podName: null };
+      } else {
+        const pod = pods[0];
+        const podName = pod.metadata?.name ?? null;
+        const phase = pod.status?.phase;
+        const conditions = pod.status?.conditions ?? [];
+        const readyCondition = conditions.find((c) => c.type === "Ready");
+        const ready = phase === "Running" && readyCondition?.status === "True";
+        cachedStatus = { ready, podName };
+      }
     }
 
-    const pod = pods[0];
-    const podName = pod.metadata?.name ?? null;
-    const phase = pod.status?.phase;
-    const conditions = pod.status?.conditions ?? [];
-    const readyCondition = conditions.find((c) => c.type === "Ready");
-    const ready = phase === "Running" && readyCondition?.status === "True";
-
-    cachedStatus = { ready, podName };
     cachedAt = now;
-    return cachedStatus;
+    return cachedStatus!;
   } catch {
     cachedStatus = { ready: false, podName: null };
     cachedAt = now;

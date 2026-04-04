@@ -1,15 +1,22 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { KubeConfig, CoreV1Api, AppsV1Api, CustomObjectsApi } from "@kubernetes/client-node";
 import { db } from "../db/client.js";
 import { repoPods, tasks, podHealthEvents, repos } from "../db/schema.js";
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../plugins/auth.js";
 import { getVersionInfo, isLocalDev } from "../services/version-service.js";
 
+const isDockerRuntime = () => (process.env.OPTIO_RUNTIME ?? "docker") === "docker";
+
 const healthEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(50),
 });
+
+// ── K8s helpers (only used when OPTIO_RUNTIME=kubernetes) ──────────────
+// Import is kept at the top level — the module is always present in the
+// monorepo since @optio/api depends on @kubernetes/client-node.
+// In a Docker-only deployment the K8s code paths are never reached.
+import { KubeConfig, CoreV1Api, AppsV1Api, CustomObjectsApi } from "@kubernetes/client-node";
 
 function getK8sConfig() {
   const kc = new KubeConfig();
@@ -33,6 +40,7 @@ function getMetricsApi() {
 
 /** Fetch metrics from the K8s Metrics API via the client library */
 async function fetchNodeMetrics(): Promise<NodeMetrics[] | null> {
+  if (isDockerRuntime()) return null;
   try {
     const api = getMetricsApi();
     const res = await api.listClusterCustomObject({
@@ -47,6 +55,7 @@ async function fetchNodeMetrics(): Promise<NodeMetrics[] | null> {
 }
 
 async function fetchPodMetrics(namespace: string): Promise<PodMetrics[] | null> {
+  if (isDockerRuntime()) return null;
   try {
     const api = getMetricsApi();
     const res = await api.listNamespacedCustomObject({
@@ -58,6 +67,53 @@ async function fetchPodMetrics(namespace: string): Promise<PodMetrics[] | null> 
     return (res as any).items ?? null;
   } catch {
     return null;
+  }
+}
+
+// ── Docker helpers (used when OPTIO_RUNTIME=docker) ───────────────────
+async function getDockerContainerList(): Promise<
+  Array<{
+    Id: string;
+    Names: string[];
+    Image: string;
+    State: string;
+    Status: string;
+    Created: number;
+    Labels: Record<string, string>;
+    NetworkSettings?: { Networks?: Record<string, { IPAddress?: string }> };
+  }>
+> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+  try {
+    const { stdout } = await execFileAsync("docker", [
+      "ps",
+      "-a",
+      "--filter",
+      "label=managed-by=optio",
+      "--format",
+      "{{json .}}",
+    ]);
+    return stdout
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const d = JSON.parse(line);
+        return {
+          Id: d.ID,
+          Names: [d.Names],
+          Image: d.Image,
+          State: d.State,
+          Status: d.Status,
+          Created: 0,
+          Labels: {},
+          NetworkSettings: undefined,
+        };
+      });
+  } catch {
+    return [];
   }
 }
 
@@ -101,121 +157,166 @@ export async function clusterRoutes(app: FastifyInstance) {
   // Cluster overview: nodes, all pods, services, resource summary — admin only
   app.get("/api/cluster/overview", { preHandler: [requireRole("admin")] }, async (req, reply) => {
     try {
-      const api = getK8sApi();
+      let nodes: any[] = [];
+      let pods: any[] = [];
+      let services: any[] = [];
+      let events: any[] = [];
+      let metricsAvailable = false;
 
-      const [nodeList, podList, serviceList, eventList] = await Promise.all([
-        api.listNode({ limit: 50 }),
-        api.listNamespacedPod({ namespace: NAMESPACE }),
-        api.listNamespacedService({ namespace: NAMESPACE }),
-        api.listNamespacedEvent({ namespace: NAMESPACE, limit: 30 }),
-      ]);
-
-      // Fetch metrics (gracefully fail if metrics-server not installed)
-      const [nodeMetricsItems, podMetricsItems] = await Promise.all([
-        fetchNodeMetrics(),
-        fetchPodMetrics(NAMESPACE),
-      ]);
-
-      const nodeMetricsMap = new Map(
-        (nodeMetricsItems ?? []).map((m) => [m.metadata.name, m.usage]),
-      );
-      const podMetricsMap = new Map(
-        (podMetricsItems ?? []).map((m) => [
-          m.metadata.name,
-          m.containers.reduce(
-            (acc, c) => ({
-              cpu: acc.cpu + parseCpuNano(c.usage.cpu),
-              memoryKi: acc.memoryKi + parseMemoryKi(c.usage.memory),
-            }),
-            { cpu: 0, memoryKi: 0 },
-          ),
-        ]),
-      );
-
-      const nodes = (nodeList.items ?? []).map((n) => {
-        const name = n.metadata?.name ?? "";
-        const capacityCpu = parseInt(n.status?.capacity?.["cpu"] ?? "0", 10);
-        const capacityMemKi = parseMemoryKi(n.status?.capacity?.["memory"] ?? "0");
-        const usage = nodeMetricsMap.get(name);
-        const usageCpuNano = usage ? parseCpuNano(usage.cpu) : null;
-        const usageMemKi = usage ? parseMemoryKi(usage.memory) : null;
-
-        return {
-          name,
-          status:
-            n.status?.conditions?.find((c) => c.type === "Ready")?.status === "True"
-              ? "Ready"
-              : "NotReady",
-          kubeletVersion: n.status?.nodeInfo?.kubeletVersion,
-          os: n.status?.nodeInfo?.osImage,
-          arch: n.status?.nodeInfo?.architecture,
-          cpu: n.status?.capacity?.["cpu"],
-          memory: n.status?.capacity?.["memory"],
-          containerRuntime: n.status?.nodeInfo?.containerRuntimeVersion,
-          // Resource usage
-          cpuPercent: usageCpuNano !== null ? formatCpuPercent(usageCpuNano, capacityCpu) : null,
-          memoryUsedGi: usageMemKi !== null ? formatMemoryGi(usageMemKi) : null,
-          memoryTotalGi: formatMemoryGi(capacityMemKi),
-        };
-      });
-
-      const pods = (podList.items ?? []).map((p) => {
-        const containerStatus = p.status?.containerStatuses?.[0];
-        const waiting = containerStatus?.state?.waiting;
-        const running = containerStatus?.state?.running;
-        const terminated = containerStatus?.state?.terminated;
-        const podName = p.metadata?.name ?? "";
-        const metrics = podMetricsMap.get(podName);
-
-        return {
-          name: podName,
-          phase: p.status?.phase,
-          status:
-            waiting?.reason ??
-            (running ? "Running" : (terminated?.reason ?? p.status?.phase ?? "Unknown")),
-          ready: containerStatus?.ready ?? false,
-          restarts: containerStatus?.restartCount ?? 0,
-          image: containerStatus?.image ?? p.spec?.containers?.[0]?.image,
-          nodeName: p.spec?.nodeName,
-          ip: p.status?.podIP,
-          startedAt: running?.startedAt ?? p.status?.startTime,
-          labels: p.metadata?.labels ?? {},
-          isOptioManaged: p.metadata?.labels?.["managed-by"] === "optio",
-          isInfra: !!(
-            p.metadata?.labels?.["app"] && ["postgres", "redis"].includes(p.metadata.labels["app"])
-          ),
-          // Resource usage
-          cpuMillicores: metrics ? Math.round(metrics.cpu / 1_000_000) : null,
-          memoryMi: metrics ? Math.round(metrics.memoryKi / 1024) : null,
-        };
-      });
-
-      const services = (serviceList.items ?? []).map((s) => ({
-        name: s.metadata?.name,
-        type: s.spec?.type,
-        clusterIP: s.spec?.clusterIP,
-        ports: s.spec?.ports?.map((p) => ({
-          port: p.port,
-          targetPort: p.targetPort,
-          protocol: p.protocol,
-        })),
-      }));
-
-      const events = (eventList.items ?? [])
-        .sort((a, b) => {
-          const aTime = a.lastTimestamp ?? a.metadata?.creationTimestamp ?? "";
-          const bTime = b.lastTimestamp ?? b.metadata?.creationTimestamp ?? "";
-          return String(bTime).localeCompare(String(aTime));
-        })
-        .slice(0, 20)
-        .map((e) => ({
-          type: e.type,
-          reason: e.reason,
-          message: e.message,
-          involvedObject: e.involvedObject?.name,
-          count: e.count,
-          lastTimestamp: e.lastTimestamp ?? e.metadata?.creationTimestamp,
+      if (isDockerRuntime()) {
+        // Docker mode: list Optio-managed containers
+        const containers = await getDockerContainerList();
+        pods = containers.map((c) => ({
+          name: c.Names?.[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12),
+          phase: c.State === "running" ? "Running" : c.State,
+          status: c.Status ?? c.State ?? "Unknown",
+          ready: c.State === "running",
+          restarts: 0,
+          image: c.Image,
+          nodeName: "docker-host",
+          ip: c.NetworkSettings?.Networks
+            ? Object.values(c.NetworkSettings.Networks)[0]?.IPAddress
+            : null,
+          startedAt: c.Created ? new Date(c.Created * 1000).toISOString() : null,
+          labels: c.Labels ?? {},
+          isOptioManaged: c.Labels?.["managed-by"] === "optio",
+          isInfra: false,
+          cpuMillicores: null,
+          memoryMi: null,
         }));
+        nodes = [
+          {
+            name: "docker-host",
+            status: "Ready",
+            kubeletVersion: null,
+            os: "Docker",
+            arch: process.arch,
+            cpu: null,
+            memory: null,
+            containerRuntime: "docker",
+            cpuPercent: null,
+            memoryUsedGi: null,
+            memoryTotalGi: null,
+          },
+        ];
+      } else {
+        // Kubernetes mode: full K8s API queries
+        const api = getK8sApi();
+
+        const [nodeList, podList, serviceList, eventList] = await Promise.all([
+          api.listNode({ limit: 50 }),
+          api.listNamespacedPod({ namespace: NAMESPACE }),
+          api.listNamespacedService({ namespace: NAMESPACE }),
+          api.listNamespacedEvent({ namespace: NAMESPACE, limit: 30 }),
+        ]);
+
+        const [nodeMetricsItems, podMetricsItems] = await Promise.all([
+          fetchNodeMetrics(),
+          fetchPodMetrics(NAMESPACE),
+        ]);
+
+        metricsAvailable = nodeMetricsItems !== null;
+
+        const nodeMetricsMap = new Map(
+          (nodeMetricsItems ?? []).map((m) => [m.metadata.name, m.usage]),
+        );
+        const podMetricsMap = new Map(
+          (podMetricsItems ?? []).map((m) => [
+            m.metadata.name,
+            m.containers.reduce(
+              (acc, c) => ({
+                cpu: acc.cpu + parseCpuNano(c.usage.cpu),
+                memoryKi: acc.memoryKi + parseMemoryKi(c.usage.memory),
+              }),
+              { cpu: 0, memoryKi: 0 },
+            ),
+          ]),
+        );
+
+        nodes = (nodeList.items ?? []).map((n) => {
+          const name = n.metadata?.name ?? "";
+          const capacityCpu = parseInt(n.status?.capacity?.["cpu"] ?? "0", 10);
+          const capacityMemKi = parseMemoryKi(n.status?.capacity?.["memory"] ?? "0");
+          const usage = nodeMetricsMap.get(name);
+          const usageCpuNano = usage ? parseCpuNano(usage.cpu) : null;
+          const usageMemKi = usage ? parseMemoryKi(usage.memory) : null;
+
+          return {
+            name,
+            status:
+              n.status?.conditions?.find((c) => c.type === "Ready")?.status === "True"
+                ? "Ready"
+                : "NotReady",
+            kubeletVersion: n.status?.nodeInfo?.kubeletVersion,
+            os: n.status?.nodeInfo?.osImage,
+            arch: n.status?.nodeInfo?.architecture,
+            cpu: n.status?.capacity?.["cpu"],
+            memory: n.status?.capacity?.["memory"],
+            containerRuntime: n.status?.nodeInfo?.containerRuntimeVersion,
+            cpuPercent: usageCpuNano !== null ? formatCpuPercent(usageCpuNano, capacityCpu) : null,
+            memoryUsedGi: usageMemKi !== null ? formatMemoryGi(usageMemKi) : null,
+            memoryTotalGi: formatMemoryGi(capacityMemKi),
+          };
+        });
+
+        pods = (podList.items ?? []).map((p) => {
+          const containerStatus = p.status?.containerStatuses?.[0];
+          const waiting = containerStatus?.state?.waiting;
+          const running = containerStatus?.state?.running;
+          const terminated = containerStatus?.state?.terminated;
+          const podName = p.metadata?.name ?? "";
+          const metrics = podMetricsMap.get(podName);
+
+          return {
+            name: podName,
+            phase: p.status?.phase,
+            status:
+              waiting?.reason ??
+              (running ? "Running" : (terminated?.reason ?? p.status?.phase ?? "Unknown")),
+            ready: containerStatus?.ready ?? false,
+            restarts: containerStatus?.restartCount ?? 0,
+            image: containerStatus?.image ?? p.spec?.containers?.[0]?.image,
+            nodeName: p.spec?.nodeName,
+            ip: p.status?.podIP,
+            startedAt: running?.startedAt ?? p.status?.startTime,
+            labels: p.metadata?.labels ?? {},
+            isOptioManaged: p.metadata?.labels?.["managed-by"] === "optio",
+            isInfra: !!(
+              p.metadata?.labels?.["app"] &&
+              ["postgres", "redis"].includes(p.metadata.labels["app"])
+            ),
+            cpuMillicores: metrics ? Math.round(metrics.cpu / 1_000_000) : null,
+            memoryMi: metrics ? Math.round(metrics.memoryKi / 1024) : null,
+          };
+        });
+
+        services = (serviceList.items ?? []).map((s) => ({
+          name: s.metadata?.name,
+          type: s.spec?.type,
+          clusterIP: s.spec?.clusterIP,
+          ports: s.spec?.ports?.map((p) => ({
+            port: p.port,
+            targetPort: p.targetPort,
+            protocol: p.protocol,
+          })),
+        }));
+
+        events = (eventList.items ?? [])
+          .sort((a, b) => {
+            const aTime = a.lastTimestamp ?? a.metadata?.creationTimestamp ?? "";
+            const bTime = b.lastTimestamp ?? b.metadata?.creationTimestamp ?? "";
+            return String(bTime).localeCompare(String(aTime));
+          })
+          .slice(0, 20)
+          .map((e) => ({
+            type: e.type,
+            reason: e.reason,
+            message: e.message,
+            involvedObject: e.involvedObject?.name,
+            count: e.count,
+            lastTimestamp: e.lastTimestamp ?? e.metadata?.creationTimestamp,
+          }));
+      }
 
       // Get Optio-specific data (scoped to workspace if available)
       const workspaceId = req.user?.workspaceId;
@@ -294,7 +395,7 @@ export async function clusterRoutes(app: FastifyInstance) {
         services,
         events,
         repoPods: enrichedRepoPods,
-        metricsAvailable: nodeMetricsItems !== null,
+        metricsAvailable,
         summary: {
           totalPods: pods.length,
           runningPods: pods.filter((p) => p.status === "Running").length,
@@ -356,24 +457,45 @@ export async function clusterRoutes(app: FastifyInstance) {
       .orderBy(desc(tasks.createdAt))
       .limit(20);
 
-    // Get K8s pod info if we have a pod name
+    // Get runtime-specific container info if we have a pod/container name
     let k8sPod = null;
     if (pod.podName) {
       try {
-        const api = getK8sApi();
-        const p = await api.readNamespacedPod({ name: pod.podName, namespace: NAMESPACE });
-        const cs = p.status?.containerStatuses?.[0];
-        k8sPod = {
-          phase: p.status?.phase,
-          status: cs?.state?.waiting?.reason ?? (cs?.state?.running ? "Running" : p.status?.phase),
-          ready: cs?.ready,
-          restarts: cs?.restartCount,
-          image: cs?.image ?? p.spec?.containers?.[0]?.image,
-          ip: p.status?.podIP,
-          nodeName: p.spec?.nodeName,
-          startedAt: cs?.state?.running?.startedAt ?? p.status?.startTime,
-          resources: p.spec?.containers?.[0]?.resources,
-        };
+        if (isDockerRuntime()) {
+          const { getRuntime } = await import("../services/container-service.js");
+          const rt = getRuntime();
+          const status = await rt.status({
+            id: pod.podId ?? pod.podName,
+            name: pod.podName,
+          });
+          k8sPod = {
+            phase: status.state === "running" ? "Running" : status.state,
+            status: status.state === "running" ? "Running" : (status.reason ?? status.state),
+            ready: status.state === "running",
+            restarts: 0,
+            image: null,
+            ip: null,
+            nodeName: "docker-host",
+            startedAt: status.startedAt?.toISOString() ?? null,
+            resources: null,
+          };
+        } else {
+          const api = getK8sApi();
+          const p = await api.readNamespacedPod({ name: pod.podName, namespace: NAMESPACE });
+          const cs = p.status?.containerStatuses?.[0];
+          k8sPod = {
+            phase: p.status?.phase,
+            status:
+              cs?.state?.waiting?.reason ?? (cs?.state?.running ? "Running" : p.status?.phase),
+            ready: cs?.ready,
+            restarts: cs?.restartCount,
+            image: cs?.image ?? p.spec?.containers?.[0]?.image,
+            ip: p.status?.podIP,
+            nodeName: p.spec?.nodeName,
+            startedAt: cs?.state?.running?.startedAt ?? p.status?.startTime,
+            resources: p.spec?.containers?.[0]?.resources,
+          };
+        }
       } catch {
         k8sPod = null;
       }
@@ -472,6 +594,14 @@ export async function clusterRoutes(app: FastifyInstance) {
     }
     const { targetVersion } = parsed.data;
 
+    if (isDockerRuntime()) {
+      return reply.status(400).send({
+        error:
+          "Self-update via API is not supported in Docker Compose mode. " +
+          "Use `docker compose pull && docker compose up -d` instead.",
+      });
+    }
+
     const imageOwner = process.env.OPTIO_IMAGE_OWNER ?? "jonwiggins";
     const registry = "ghcr.io";
 
@@ -499,7 +629,6 @@ export async function clusterRoutes(app: FastifyInstance) {
             },
           });
         } catch (depErr: any) {
-          // If a deployment doesn't exist, skip it
           if (depErr?.response?.statusCode === 404) continue;
           throw depErr;
         }

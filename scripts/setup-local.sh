@@ -66,7 +66,7 @@ ENCRYPTION_KEY=$(openssl rand -hex 32)
 
 if helm status optio -n optio &>/dev/null; then
   echo "   Existing release found, upgrading..."
-  helm upgrade optio helm/optio -n optio \
+  helm upgrade optio helm-legacy/optio -n optio \
     --set encryption.key="$ENCRYPTION_KEY" \
     --set api.image.pullPolicy=Never \
     --set web.image.pullPolicy=Never \
@@ -82,7 +82,7 @@ if helm status optio -n optio &>/dev/null; then
     --set postgresql.auth.password=optio_dev \
     --wait --timeout=120s
 else
-  helm install optio helm/optio -n optio --create-namespace \
+  helm install optio helm-legacy/optio -n optio --create-namespace \
     --set encryption.key="$ENCRYPTION_KEY" \
     --set api.image.pullPolicy=Never \
     --set web.image.pullPolicy=Never \

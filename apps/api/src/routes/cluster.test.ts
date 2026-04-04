@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 
@@ -100,10 +100,20 @@ async function buildTestApp(): Promise<FastifyInstance> {
 
 describe("GET /api/cluster/overview", () => {
   let app: FastifyInstance;
+  const originalRuntime = process.env.OPTIO_RUNTIME;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.OPTIO_RUNTIME = "kubernetes";
     app = await buildTestApp();
+  });
+
+  afterEach(() => {
+    if (originalRuntime === undefined) {
+      delete process.env.OPTIO_RUNTIME;
+    } else {
+      process.env.OPTIO_RUNTIME = originalRuntime;
+    }
   });
 
   it("returns 500 when K8s API fails", async () => {

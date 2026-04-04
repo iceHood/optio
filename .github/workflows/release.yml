@@ -172,11 +172,11 @@ jobs:
 
       - name: Update Chart.yaml version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" helm/optio/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.version }}\"/" helm/optio/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" helm-legacy/optio/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.version }}\"/" helm-legacy/optio/Chart.yaml
 
       - name: Package chart
-        run: helm package helm/optio --destination .helm-pkg
+        run: helm package helm-legacy/optio --destination .helm-pkg
 
       - name: Push chart to GHCR
         run: helm push .helm-pkg/optio-${{ steps.version.outputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}

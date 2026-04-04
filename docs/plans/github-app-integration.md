@@ -306,7 +306,7 @@ The auto-detect block (lines 70-83) calls `retrieveSecret("GITHUB_TOKEN")`. Repl
 
 ### Phase 8: Helm Chart & Configuration
 
-**Modified file:** `helm/optio/values.yaml`
+**Modified file:** `helm-legacy/optio/values.yaml`
 
 Add under the `github` key (or create it):
 
@@ -320,7 +320,7 @@ github:
     privateKey: "" # PEM private key contents (generate from app settings)
 ```
 
-**Modified file:** `helm/optio/templates/secrets.yaml`
+**Modified file:** `helm-legacy/optio/templates/secrets.yaml`
 
 Add conditionally:
 

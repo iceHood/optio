@@ -295,7 +295,7 @@ Canonical output: `https://github.com/owner/repo` (lowercase host, no trailing s
 | Validation | Zod                              | API request schemas                                                                |
 | Testing    | Vitest                           | Test files across shared + api                                                     |
 | CI         | GitHub Actions                   | Format, typecheck, test, build-web, build-image                                    |
-| Deploy     | Helm                             | Chart at `helm/optio/`, local dev via `setup-local.sh`                             |
+| Deploy     | Helm                             | Chart at `helm-legacy/optio/`, local dev via `setup-local.sh`                      |
 | Hooks      | Husky + lint-staged + commitlint | Pre-commit: lint-staged + format + typecheck. Commit-msg: conventional commits     |
 
 ## Directory Layout
@@ -348,7 +348,7 @@ Dockerfile.api        API server Docker image (tsx-based)
 Dockerfile.web        Web UI Docker image (Next.js production build)
 Dockerfile.agent      Legacy agent image
 images/               Agent preset Dockerfiles: base, node, python, go, rust, full + build.sh
-helm/optio/           Helm chart: api, web, postgres, redis, ingress, rbac, secrets
+helm-legacy/optio/           Helm chart: api, web, postgres, redis, ingress, rbac, secrets
 scripts/              setup-local.sh, update-local.sh, repo-init.sh, agent-entrypoint.sh
 ```
 
@@ -397,7 +397,7 @@ scripts/              setup-local.sh, update-local.sh, repo-init.sh, agent-entry
 
 ## Helm Chart
 
-At `helm/optio/`. Deploys the full stack to any K8s cluster.
+At `helm-legacy/optio/`. Deploys the full stack to any K8s cluster.
 
 Key `values.yaml` settings:
 
@@ -410,7 +410,7 @@ The chart creates: namespace, ServiceAccount + RBAC (pod/exec/secret management)
 
 ```bash
 # Local dev (setup-local.sh handles this automatically)
-helm install optio helm/optio -n optio --create-namespace \
+helm install optio helm-legacy/optio -n optio --create-namespace \
   --set encryption.key=$(openssl rand -hex 32) \
   --set api.image.pullPolicy=Never \
   --set web.image.pullPolicy=Never \
@@ -420,7 +420,7 @@ helm install optio helm/optio -n optio --create-namespace \
   --set postgresql.auth.password=optio_dev
 
 # Production with managed services
-helm install optio helm/optio -n optio --create-namespace \
+helm install optio helm-legacy/optio -n optio --create-namespace \
   --set postgresql.enabled=false \
   --set externalDatabase.url="postgres://..." \
   --set redis.enabled=false \
@@ -457,8 +457,8 @@ cd apps/api && npx drizzle-kit generate  # Generate migration after schema chang
 ./images/build.sh                     # Build all image presets (base, node, python, go, rust, full)
 
 # Helm
-helm lint helm/optio --set encryption.key=test
-helm upgrade optio helm/optio -n optio --reuse-values
+helm lint helm-legacy/optio --set encryption.key=test
+helm upgrade optio helm-legacy/optio -n optio --reuse-values
 
 # Teardown
 helm uninstall optio -n optio

@@ -10,7 +10,15 @@
  * container can read.
  */
 
-import type { V1Container, V1Volume, V1VolumeMount, V1EnvVar } from "@kubernetes/client-node";
+// These types are used to build K8s-compatible manifest objects.
+// In Docker mode, the objects are still constructed the same way but
+// passed through as opaque `raw` objects in ContainerSpec, so the types
+// are only used for authoring convenience — they are not required at runtime.
+// When @kubernetes/client-node is not installed, we fall back to plain types.
+type V1Container = any;
+type V1Volume = any;
+type V1VolumeMount = any;
+type V1EnvVar = any;
 
 /** Envoy listener port inside the pod (localhost only). */
 export const ENVOY_PROXY_PORT = 10080;

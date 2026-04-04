@@ -56,6 +56,12 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 async function checkMetricsServer() {
+  const runtimeType = process.env.OPTIO_RUNTIME ?? "docker";
+  if (runtimeType === "docker") {
+    logger.info("Docker runtime — skipping K8s metrics-server check");
+    return;
+  }
+
   try {
     const { KubeConfig, CustomObjectsApi } = await import("@kubernetes/client-node");
     const kc = new KubeConfig();

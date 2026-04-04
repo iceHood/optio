@@ -1063,7 +1063,12 @@ export function buildAgentCommand(
               `if curl -sf "${env.OPTIO_API_URL}/api/auth/claude-token" > /dev/null 2>&1; then echo "[optio] Token proxy OK"; fi`,
               `unset ANTHROPIC_API_KEY 2>/dev/null || true`,
             ]
-          : [];
+          : env.OPTIO_AUTH_MODE === "claude-cli"
+            ? [
+                `echo "[optio] Using Claude CLI authentication (Pro/Max subscription)"`,
+                `unset ANTHROPIC_API_KEY 2>/dev/null || true`,
+              ]
+            : [];
 
       const resumeFlag = opts?.resumeSessionId
         ? `--resume ${JSON.stringify(opts.resumeSessionId)}`
@@ -1073,6 +1078,7 @@ export function buildAgentCommand(
         ...authSetup,
         `echo "[optio] Running Claude Code${opts?.isReview ? " (review)" : ""}..."`,
         `claude -p ${JSON.stringify(prompt)} \\`,
+        `  --allowedTools 'Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch' \\`,
         `  --dangerously-skip-permissions \\`,
         `  --output-format stream-json \\`,
         `  --verbose \\`,
