@@ -149,6 +149,7 @@ export async function installFromGitHub(
   skillPath?: string,
   workspaceId?: string | null,
   githubToken?: string,
+  skillName?: string,
 ): Promise<MarketplaceSkillConfig> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github.v3+json",
@@ -174,8 +175,15 @@ export async function installFromGitHub(
     const tree = (await treeRes.json()) as {
       tree: Array<{ path: string; type: string }>;
     };
-    const skillFile = tree.tree.find((f) => f.type === "blob" && f.path.endsWith("SKILL.md"));
-    if (!skillFile) throw new Error(`No SKILL.md found in ${source}`);
+    // If a skill name is given, find its specific SKILL.md (e.g. "skills/frontend-design/SKILL.md")
+    const skillFile = skillName
+      ? tree.tree.find(
+          (f) =>
+            f.type === "blob" && f.path.endsWith("SKILL.md") && f.path.includes(`/${skillName}/`),
+        )
+      : tree.tree.find((f) => f.type === "blob" && f.path.endsWith("SKILL.md"));
+    if (!skillFile)
+      throw new Error(`No SKILL.md found for ${skillName ?? "any skill"} in ${source}`);
     skillPath = skillFile.path;
   }
 

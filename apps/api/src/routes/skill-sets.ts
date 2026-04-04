@@ -139,13 +139,14 @@ export async function skillSetRoutes(app: FastifyInstance) {
 
     // Parse "owner/repo@skill" format
     const [ownerRepo, skillName] = parsed.data.source.split("@");
-    const skillPath = parsed.data.skillPath ?? (skillName ? `${skillName}/SKILL.md` : undefined);
-
+    // Don't guess the path — let installFromGitHub search the repo tree
+    // for the SKILL.md matching the skill name
     const skill = await marketplaceService.installFromGitHub(
       ownerRepo,
-      skillPath,
+      parsed.data.skillPath,
       wsId,
       ghToken ?? undefined,
+      skillName,
     );
     reply.status(201).send({ skill });
   });
