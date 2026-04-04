@@ -60,7 +60,7 @@ services:
       REDIS_URL: redis://redis:6379
 
       # Encryption (generate with: openssl rand -hex 32)
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env (openssl rand -hex 32)}
+      OPTIO_ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env (openssl rand -hex 32)}
 
       # Auth (set to "true" to bypass auth for local dev)
       OPTIO_AUTH_DISABLED: ${OPTIO_AUTH_DISABLED:-true}
