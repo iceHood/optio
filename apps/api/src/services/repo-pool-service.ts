@@ -654,7 +654,7 @@ export async function execTaskInRepoPod(
     // Without this, Claude's Bash tool may run `gh auth login` which hangs waiting for
     // interactive input, preventing the exec stream from ever closing.
     `if [ -n "\${GITHUB_TOKEN:-}" ]; then`,
-    `  echo "\${GITHUB_TOKEN}" | gh auth login --with-token 2>/dev/null && echo "[optio] gh CLI authenticated" || true`,
+    `  echo "\${GITHUB_TOKEN}" | gh auth login --with-token 2>/dev/null && gh auth setup-git 2>/dev/null && echo "[optio] gh CLI authenticated + git credential helper configured" || true`,
     `fi`,
     // EXIT trap: clean up worktrees AND kill any orphaned child processes.
     // Without the process kill, hung child processes (e.g. interactive gh auth login)
