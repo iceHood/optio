@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "[optio] Initializing repo pod"
+echo "[optio] Initializing workspace"
 echo "[optio] Repo: ${OPTIO_REPO_URL} (branch: ${OPTIO_REPO_BRANCH})"
 
 # Configure git author for initial clone (overridden per-worktree at task exec time)
@@ -65,25 +65,76 @@ install_validated_packages() {
 if [ -n "${OPTIO_RUNTIME_MANIFEST:-}" ]; then
   echo "[optio] Provisioning from runtime manifest"
 
-  # System packages
+  # ── Language toolchain installation ──────────────────────────────────────
+  LANG_NAMES=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.languageInstalls[]?.name] | unique | .[]' 2>/dev/null || echo "")
+  for lang in ${LANG_NAMES}; do
+    case "$lang" in
+      node)
+        echo "[optio] Installing Node.js dev toolchain (pnpm, yarn, bun, build-essential)"
+        sudo apt-get update -qq 2>/dev/null
+        sudo apt-get install -y -qq build-essential python3-dev 2>&1 | tail -3 || true
+        npm install -g pnpm yarn 2>&1 | tail -3 || true
+        # Install bun
+        if ! command -v bun &>/dev/null; then
+          curl -fsSL https://bun.sh/install | bash 2>&1 | tail -3 || true
+          export BUN_INSTALL="$HOME/.bun"
+          export PATH="$BUN_INSTALL/bin:$PATH"
+          echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.bashrc
+          echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> ~/.bashrc
+        fi
+        echo "[optio] Node.js toolchain ready: $(node --version), pnpm $(pnpm --version 2>/dev/null || echo 'n/a')"
+        ;;
+      python)
+        echo "[optio] Installing Python dev toolchain (pip, uv, poetry, venv)"
+        sudo apt-get update -qq 2>/dev/null
+        sudo apt-get install -y -qq python3-full python3-pip python3-venv python3-dev build-essential 2>&1 | tail -3 || true
+        pip install --break-system-packages uv poetry 2>&1 | tail -3 || true
+        echo "[optio] Python toolchain ready: $(python3 --version), uv $(uv --version 2>/dev/null || echo 'n/a')"
+        ;;
+      go)
+        echo "[optio] Installing Go toolchain"
+        GO_VERSION=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '.languageInstalls[] | select(.name=="go") | .version // "1.23.4"' 2>/dev/null || echo "1.23.4")
+        # Remove minor-only version (e.g., "1.23" → "1.23.4")
+        [[ "$GO_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] && GO_VERSION="${GO_VERSION}.4"
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | sudo tar -C /usr/local -xzf - 2>&1 || true
+        export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
+        echo 'export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"' >> ~/.bashrc
+        echo "[optio] Go toolchain ready: $(go version 2>/dev/null || echo 'install failed')"
+        ;;
+      rust)
+        echo "[optio] Installing Rust toolchain"
+        sudo apt-get update -qq 2>/dev/null
+        sudo apt-get install -y -qq build-essential pkg-config libssl-dev 2>&1 | tail -3 || true
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>&1 | tail -5 || true
+        source "$HOME/.cargo/env" 2>/dev/null || true
+        echo 'source "$HOME/.cargo/env"' >> ~/.bashrc
+        echo "[optio] Rust toolchain ready: $(rustc --version 2>/dev/null || echo 'install failed')"
+        ;;
+      *)
+        echo "[optio] Warning: unknown language '$lang', skipping"
+        ;;
+    esac
+  done
+
+  # ── System packages ──────────────────────────────────────────────────────
   SYS_PKGS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.systemPackages[]?] | join(" ")' 2>/dev/null || echo "")
   install_validated_packages "${SYS_PKGS}"
 
-  # Global node packages
+  # ── Global node packages ─────────────────────────────────────────────────
   NODE_PKGS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.nodePackages[]?] | join(" ")' 2>/dev/null || echo "")
   if [ -n "${NODE_PKGS}" ]; then
     echo "[optio] Installing node packages: ${NODE_PKGS}"
     npm install -g ${NODE_PKGS} 2>&1 | tail -3 || echo "[optio] Warning: node package install failed"
   fi
 
-  # Python packages
+  # ── Python packages ──────────────────────────────────────────────────────
   PY_PKGS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.pythonPackages[]?] | join(" ")' 2>/dev/null || echo "")
   if [ -n "${PY_PKGS}" ]; then
     echo "[optio] Installing python packages: ${PY_PKGS}"
     pip install --break-system-packages ${PY_PKGS} 2>&1 | tail -3 || echo "[optio] Warning: python package install failed"
   fi
 
-  # Environment variables
+  # ── Environment variables ────────────────────────────────────────────────
   ENV_KEYS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '.envVars // {} | keys[]' 2>/dev/null || echo "")
   for key in ${ENV_KEYS}; do
     val=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r ".envVars[\"${key}\"]")
@@ -91,7 +142,7 @@ if [ -n "${OPTIO_RUNTIME_MANIFEST:-}" ]; then
     echo "export ${key}=\"${val}\"" >> ~/.bashrc
   done
 
-  # Setup commands
+  # ── Setup commands ───────────────────────────────────────────────────────
   SETUP_CMDS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.setupCommands[]?] | join("\n")' 2>/dev/null || echo "")
   if [ -n "${SETUP_CMDS}" ]; then
     echo "[optio] Running manifest setup commands"
@@ -145,7 +196,7 @@ fi
 
 # Signal that the pod is ready for tasks
 touch /workspace/.ready
-echo "[optio] Repo pod ready — waiting for tasks"
+echo "[optio] Workspace ready — waiting for tasks"
 
 # Keep the pod alive
 exec sleep infinity

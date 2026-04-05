@@ -48,6 +48,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
   const [runtimeManifest, setRuntimeManifest] = useState<Record<string, unknown>>({});
   const [customDockerfile, setCustomDockerfile] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showLegacyAgent, setShowLegacyAgent] = useState(false);
   const [autoMerge, setAutoMerge] = useState(false);
   const [cautiousMode, setCautiousMode] = useState(false);
   const [defaultAgentType, setDefaultAgentType] = useState("claude-code");
@@ -383,264 +384,291 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        <h3 className="text-xs font-medium text-text-muted pt-2">
-          {isDocker ? "Container Scaling" : "Pod Scaling"}
-        </h3>
-        <p className="text-[10px] text-text-muted/60">
-          Control how many {isDocker ? "container" : "pod"} replicas are created for this repo and
-          how many agents run per {isDocker ? "container" : "pod"}.
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-text-muted mb-1">
-              {isDocker ? "Max container instances" : "Max pod instances"}
-            </label>
-            <NumberInput
-              min={1}
-              max={20}
-              value={maxPodInstances}
-              onChange={(v) => setMaxPodInstances(v)}
-              fallback={1}
-            />
-            <p className="text-[10px] text-text-muted/60 mt-1">
-              {isDocker ? "Container" : "Pod"} replicas for this repo. Extra{" "}
-              {isDocker ? "containers are" : "pods are"} created when demand exceeds single-
-              {isDocker ? "container" : "pod"} capacity.
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1">
-              {isDocker ? "Max agents per container" : "Max agents per pod"}
-            </label>
-            <NumberInput
-              min={1}
-              max={50}
-              value={maxAgentsPerPod}
-              onChange={(v) => setMaxAgentsPerPod(v)}
-              fallback={2}
-            />
-            <p className="text-[10px] text-text-muted/60 mt-1">
-              Max concurrent agents (worktrees) in a single {isDocker ? "container" : "pod"}.
-            </p>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-1 text-xs text-primary hover:underline pt-1"
+        >
+          {showAdvanced ? "Hide infrastructure settings" : "Infrastructure settings"}
+        </button>
 
-        <h3 className="text-xs font-medium text-text-muted pt-2">
-          {isDocker ? "Container Resources" : "Pod Resources"}
-        </h3>
-        <p className="text-[10px] text-text-muted/60">
-          Configure CPU and memory requests/limits for workspace {isDocker ? "containers" : "pods"}.
-          Leave empty to use {isDocker ? "default" : "cluster"} defaults. Changes apply to newly
-          created {isDocker ? "containers" : "pods"} only.
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-text-muted mb-1">CPU request</label>
-            <input
-              value={cpuRequest}
-              onChange={(e) => setCpuRequest(e.target.value)}
-              placeholder="e.g. 500m"
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            />
-            <p className="text-[10px] text-text-muted/60 mt-1">
-              Minimum CPU guaranteed. Use millicores (e.g. &quot;500m&quot;) or cores (e.g.
-              &quot;2&quot;). Range: 100m–32000m.
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1">CPU limit</label>
-            <input
-              value={cpuLimit}
-              onChange={(e) => setCpuLimit(e.target.value)}
-              placeholder="e.g. 2000m"
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            />
-            <p className="text-[10px] text-text-muted/60 mt-1">
-              Maximum CPU allowed. Must be &ge; CPU request.
-            </p>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Memory request</label>
-            <input
-              value={memoryRequest}
-              onChange={(e) => setMemoryRequest(e.target.value)}
-              placeholder="e.g. 512Mi"
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            />
-            <p className="text-[10px] text-text-muted/60 mt-1">
-              Minimum memory guaranteed. Use binary units (e.g. &quot;512Mi&quot;, &quot;2Gi&quot;).
-              Range: 256Mi–64Gi.
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Memory limit</label>
-            <input
-              value={memoryLimit}
-              onChange={(e) => setMemoryLimit(e.target.value)}
-              placeholder="e.g. 4Gi"
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            />
-            <p className="text-[10px] text-text-muted/60 mt-1">
-              Maximum memory allowed. Must be &ge; memory request. {isDocker ? "Container" : "Pod"}{" "}
-              is OOM-killed if exceeded.
-            </p>
-          </div>
-        </div>
-
-        {!isDocker && (
+        {showAdvanced && (
           <>
-            <h3 className="text-xs font-medium text-text-muted pt-2">Network Egress Policy</h3>
+            <h3 className="text-xs font-medium text-text-muted pt-2">
+              {isDocker ? "Container Scaling" : "Pod Scaling"}
+            </h3>
             <p className="text-[10px] text-text-muted/60">
-              Control outbound network access from agent {isDocker ? "containers" : "pods"}.{" "}
-              {!isDocker &&
-                "Requires a CNI plugin that supports NetworkPolicy (Calico, Cilium, etc.)."}
+              Control how many {isDocker ? "container" : "pod"} replicas are created for this repo
+              and how many agents run per {isDocker ? "container" : "pod"}.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-text-muted mb-1">Egress policy</label>
-                <select
-                  value={networkPolicy}
-                  onChange={(e) => setNetworkPolicy(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-                >
-                  <option value="unrestricted">Unrestricted (default)</option>
-                  <option value="restricted">Restricted</option>
-                </select>
+                <label className="block text-xs text-text-muted mb-1">
+                  {isDocker ? "Max container instances" : "Max pod instances"}
+                </label>
+                <NumberInput
+                  min={1}
+                  max={20}
+                  value={maxPodInstances}
+                  onChange={(v) => setMaxPodInstances(v)}
+                  fallback={1}
+                />
                 <p className="text-[10px] text-text-muted/60 mt-1">
-                  {networkPolicy === "restricted"
-                    ? "Egress limited to DNS, AI APIs (Anthropic, OpenAI), GitHub, and the Optio API server."
-                    : `No network restrictions. Agent ${isDocker ? "containers" : "pods"} can reach any endpoint.`}
+                  {isDocker ? "Container" : "Pod"} replicas for this repo. Extra{" "}
+                  {isDocker ? "containers are" : "pods are"} created when demand exceeds single-
+                  {isDocker ? "container" : "pod"} capacity.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">
+                  {isDocker ? "Max agents per container" : "Max agents per pod"}
+                </label>
+                <NumberInput
+                  min={1}
+                  max={50}
+                  value={maxAgentsPerPod}
+                  onChange={(v) => setMaxAgentsPerPod(v)}
+                  fallback={2}
+                />
+                <p className="text-[10px] text-text-muted/60 mt-1">
+                  Max concurrent agents (worktrees) in a single {isDocker ? "container" : "pod"}.
                 </p>
               </div>
             </div>
-            {networkPolicy === "restricted" && (
-              <div className="p-3 rounded-md bg-bg border border-border">
-                <p className="text-xs text-text-muted mb-2">Allowed egress destinations:</p>
-                <ul className="text-xs space-y-1 text-text-muted">
-                  <li>DNS (kube-dns, port 53 UDP/TCP)</li>
-                  <li>HTTPS (port 443) &mdash; api.anthropic.com, api.openai.com, github.com</li>
-                  <li>Intra-namespace &mdash; Optio API server (callbacks, token refresh)</li>
-                </ul>
-              </div>
-            )}
-          </>
-        )}
 
-        {!isDocker && (
-          <>
             <h3 className="text-xs font-medium text-text-muted pt-2">
-              Secret Proxy (Envoy Sidecar)
+              {isDocker ? "Container Resources" : "Pod Resources"}
             </h3>
             <p className="text-[10px] text-text-muted/60">
-              Inject an Envoy sidecar proxy that intercepts outbound API calls and adds
-              authentication headers. Agent containers never see raw secrets (GitHub token,
-              Anthropic API key).
+              Configure CPU and memory requests/limits for workspace{" "}
+              {isDocker ? "containers" : "pods"}. Leave empty to use{" "}
+              {isDocker ? "default" : "cluster"} defaults. Changes apply to newly created{" "}
+              {isDocker ? "containers" : "pods"} only.
             </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-text-muted mb-1">CPU request</label>
+                <input
+                  value={cpuRequest}
+                  onChange={(e) => setCpuRequest(e.target.value)}
+                  placeholder="e.g. 500m"
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                />
+                <p className="text-[10px] text-text-muted/60 mt-1">
+                  Minimum CPU guaranteed. Use millicores (e.g. &quot;500m&quot;) or cores (e.g.
+                  &quot;2&quot;). Range: 100m–32000m.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">CPU limit</label>
+                <input
+                  value={cpuLimit}
+                  onChange={(e) => setCpuLimit(e.target.value)}
+                  placeholder="e.g. 2000m"
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                />
+                <p className="text-[10px] text-text-muted/60 mt-1">
+                  Maximum CPU allowed. Must be &ge; CPU request.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Memory request</label>
+                <input
+                  value={memoryRequest}
+                  onChange={(e) => setMemoryRequest(e.target.value)}
+                  placeholder="e.g. 512Mi"
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                />
+                <p className="text-[10px] text-text-muted/60 mt-1">
+                  Minimum memory guaranteed. Use binary units (e.g. &quot;512Mi&quot;,
+                  &quot;2Gi&quot;). Range: 256Mi–64Gi.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Memory limit</label>
+                <input
+                  value={memoryLimit}
+                  onChange={(e) => setMemoryLimit(e.target.value)}
+                  placeholder="e.g. 4Gi"
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                />
+                <p className="text-[10px] text-text-muted/60 mt-1">
+                  Maximum memory allowed. Must be &ge; memory request.{" "}
+                  {isDocker ? "Container" : "Pod"} is OOM-killed if exceeded.
+                </p>
+              </div>
+            </div>
+
+            {!isDocker && (
+              <>
+                <h3 className="text-xs font-medium text-text-muted pt-2">Network Egress Policy</h3>
+                <p className="text-[10px] text-text-muted/60">
+                  Control outbound network access from agent {isDocker ? "containers" : "pods"}.{" "}
+                  {!isDocker &&
+                    "Requires a CNI plugin that supports NetworkPolicy (Calico, Cilium, etc.)."}
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-text-muted mb-1">Egress policy</label>
+                    <select
+                      value={networkPolicy}
+                      onChange={(e) => setNetworkPolicy(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                    >
+                      <option value="unrestricted">Unrestricted (default)</option>
+                      <option value="restricted">Restricted</option>
+                    </select>
+                    <p className="text-[10px] text-text-muted/60 mt-1">
+                      {networkPolicy === "restricted"
+                        ? "Egress limited to DNS, AI APIs (Anthropic, OpenAI), GitHub, and the Optio API server."
+                        : `No network restrictions. Agent ${isDocker ? "containers" : "pods"} can reach any endpoint.`}
+                    </p>
+                  </div>
+                </div>
+                {networkPolicy === "restricted" && (
+                  <div className="p-3 rounded-md bg-bg border border-border">
+                    <p className="text-xs text-text-muted mb-2">Allowed egress destinations:</p>
+                    <ul className="text-xs space-y-1 text-text-muted">
+                      <li>DNS (kube-dns, port 53 UDP/TCP)</li>
+                      <li>
+                        HTTPS (port 443) &mdash; api.anthropic.com, api.openai.com, github.com
+                      </li>
+                      <li>Intra-namespace &mdash; Optio API server (callbacks, token refresh)</li>
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+
+            {!isDocker && (
+              <>
+                <h3 className="text-xs font-medium text-text-muted pt-2">
+                  Secret Proxy (Envoy Sidecar)
+                </h3>
+                <p className="text-[10px] text-text-muted/60">
+                  Inject an Envoy sidecar proxy that intercepts outbound API calls and adds
+                  authentication headers. Agent containers never see raw secrets (GitHub token,
+                  Anthropic API key).
+                </p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={secretProxy}
+                    onChange={(e) => setSecretProxy(e.target.checked)}
+                    className="w-4 h-4 rounded"
+                  />
+                  <div>
+                    <span className="text-sm">Enable secret proxy</span>
+                    <p className="text-[10px] text-text-muted/60 mt-0.5">
+                      Adds an Envoy {isDocker ? "proxy" : "sidecar"} to agent{" "}
+                      {isDocker ? "containers" : "pods"}. Requires &ldquo;Restricted&rdquo; network
+                      policy to prevent agents from bypassing the proxy.
+                    </p>
+                  </div>
+                </label>
+                {secretProxy && networkPolicy !== "restricted" && (
+                  <div className="p-3 rounded-md bg-warning/10 border border-warning/30">
+                    <p className="text-xs text-warning">
+                      Warning: Secret proxy is most effective with a restricted network policy.
+                      Without egress restrictions, agents can bypass the proxy and call APIs
+                      directly.
+                    </p>
+                  </div>
+                )}
+                {secretProxy && (
+                  <div className="p-3 rounded-md bg-bg border border-border">
+                    <p className="text-xs text-text-muted mb-2">Secrets covered by the proxy:</p>
+                    <ul className="text-xs space-y-1 text-text-muted">
+                      <li>
+                        <code className="text-primary">GITHUB_TOKEN</code> &rarr;{" "}
+                        <code>Authorization: Bearer</code> for github.com, api.github.com
+                      </li>
+                      <li>
+                        <code className="text-primary">ANTHROPIC_API_KEY</code> &rarr;{" "}
+                        <code>x-api-key</code> for api.anthropic.com
+                      </li>
+                    </ul>
+                    <p className="text-[10px] text-text-muted/60 mt-2">
+                      Note: <code>CLAUDE_CODE_OAUTH_TOKEN</code> is not covered in v1 &mdash; Claude
+                      Code reads it from an env var, not via HTTP headers.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            <h3 className="text-xs font-medium text-text-muted pt-2">Off-Peak Scheduling</h3>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={secretProxy}
-                onChange={(e) => setSecretProxy(e.target.checked)}
+                checked={offPeakOnly}
+                onChange={(e) => setOffPeakOnly(e.target.checked)}
                 className="w-4 h-4 rounded"
               />
               <div>
-                <span className="text-sm">Enable secret proxy</span>
+                <span className="text-sm">Off-peak only</span>
                 <p className="text-[10px] text-text-muted/60 mt-0.5">
-                  Adds an Envoy {isDocker ? "proxy" : "sidecar"} to agent{" "}
-                  {isDocker ? "containers" : "pods"}. Requires &ldquo;Restricted&rdquo; network
-                  policy to prevent agents from bypassing the proxy.
+                  Hold tasks in queue during peak hours (8 AM &ndash; 2 PM ET, weekdays) and run
+                  them during off-peak windows when 2x usage limits apply. Individual tasks can be
+                  overridden with &ldquo;Run Now&rdquo;.
                 </p>
               </div>
             </label>
-            {secretProxy && networkPolicy !== "restricted" && (
-              <div className="p-3 rounded-md bg-warning/10 border border-warning/30">
-                <p className="text-xs text-warning">
-                  Warning: Secret proxy is most effective with a restricted network policy. Without
-                  egress restrictions, agents can bypass the proxy and call APIs directly.
+
+            <h3 className="text-xs font-medium text-text-muted pt-2">Docker-in-Docker</h3>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={dockerInDocker}
+                onChange={(e) => setDockerInDocker(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <div>
+                <span className="text-sm">Enable Docker-in-Docker</span>
+                <p className="text-[10px] text-text-muted/60 mt-0.5">
+                  Allow agents to run <code>docker build</code> and <code>docker run</code> inside{" "}
+                  {isDocker ? "containers" : "pods"}.
+                  {!isDocker && (
+                    <>
+                      {" "}
+                      Uses K8s user namespace isolation (<code>hostUsers: false</code>) with
+                      SYS_ADMIN and NET_ADMIN capabilities scoped to the user namespace &mdash; no
+                      privileged mode needed.
+                    </>
+                  )}
                 </p>
               </div>
-            )}
-            {secretProxy && (
+            </label>
+            {dockerInDocker && (
               <div className="p-3 rounded-md bg-bg border border-border">
-                <p className="text-xs text-text-muted mb-2">Secrets covered by the proxy:</p>
+                <p className="text-xs text-text-muted mb-2">Node requirements:</p>
                 <ul className="text-xs space-y-1 text-text-muted">
-                  <li>
-                    <code className="text-primary">GITHUB_TOKEN</code> &rarr;{" "}
-                    <code>Authorization: Bearer</code> for github.com, api.github.com
-                  </li>
-                  <li>
-                    <code className="text-primary">ANTHROPIC_API_KEY</code> &rarr;{" "}
-                    <code>x-api-key</code> for api.anthropic.com
-                  </li>
+                  <li>Linux kernel &ge; 6.3</li>
+                  <li>containerd &ge; 2.0 or CRI-O &ge; 1.25</li>
+                  <li>Filesystem support for idmap mounts (ext4, xfs, overlay, tmpfs)</li>
                 </ul>
                 <p className="text-[10px] text-text-muted/60 mt-2">
-                  Note: <code>CLAUDE_CODE_OAUTH_TOKEN</code> is not covered in v1 &mdash; Claude
-                  Code reads it from an env var, not via HTTP headers.
+                  Docker Desktop&apos;s Linux VM uses kernel 6.10+ so local dev should work out of
+                  the box. Cloud clusters may need recent node images.
                 </p>
               </div>
             )}
           </>
         )}
-
-        <h3 className="text-xs font-medium text-text-muted pt-2">Off-Peak Scheduling</h3>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={offPeakOnly}
-            onChange={(e) => setOffPeakOnly(e.target.checked)}
-            className="w-4 h-4 rounded"
-          />
-          <div>
-            <span className="text-sm">Off-peak only</span>
-            <p className="text-[10px] text-text-muted/60 mt-0.5">
-              Hold tasks in queue during peak hours (8 AM &ndash; 2 PM ET, weekdays) and run them
-              during off-peak windows when 2x usage limits apply. Individual tasks can be overridden
-              with &ldquo;Run Now&rdquo;.
-            </p>
-          </div>
-        </label>
-
-        <h3 className="text-xs font-medium text-text-muted pt-2">Docker-in-Docker</h3>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={dockerInDocker}
-            onChange={(e) => setDockerInDocker(e.target.checked)}
-            className="w-4 h-4 rounded"
-          />
-          <div>
-            <span className="text-sm">Enable Docker-in-Docker</span>
-            <p className="text-[10px] text-text-muted/60 mt-0.5">
-              Allow agents to run <code>docker build</code> and <code>docker run</code> inside{" "}
-              {isDocker ? "containers" : "pods"}.
-              {!isDocker && (
-                <>
-                  {" "}
-                  Uses K8s user namespace isolation (<code>hostUsers: false</code>) with SYS_ADMIN
-                  and NET_ADMIN capabilities scoped to the user namespace &mdash; no privileged mode
-                  needed.
-                </>
-              )}
-            </p>
-          </div>
-        </label>
-        {dockerInDocker && (
-          <div className="p-3 rounded-md bg-bg border border-border">
-            <p className="text-xs text-text-muted mb-2">Node requirements:</p>
-            <ul className="text-xs space-y-1 text-text-muted">
-              <li>Linux kernel &ge; 6.3</li>
-              <li>containerd &ge; 2.0 or CRI-O &ge; 1.25</li>
-              <li>Filesystem support for idmap mounts (ext4, xfs, overlay, tmpfs)</li>
-            </ul>
-            <p className="text-[10px] text-text-muted/60 mt-2">
-              Docker Desktop&apos;s Linux VM uses kernel 6.10+ so local dev should work out of the
-              box. Cloud clusters may need recent node images.
-            </p>
-          </div>
-        )}
       </section>
+
+      {/* Runtime Environment */}
+      <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+        <RuntimeManifestEditor
+          value={runtimeManifest as any}
+          onChange={setRuntimeManifest as any}
+        />
+      </section>
+
+      {/* Pipeline Agents */}
+      <PipelineAgents repoId={id} />
 
       {/* PR Lifecycle */}
       <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-0">
@@ -886,131 +914,146 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
         </PipelineStage>
       </section>
 
-      {/* Pipeline Agents */}
-      <PipelineAgents repoId={id} />
-
-      {/* Default Agent */}
+      {/* Legacy Agent Settings (collapsed by default — use Pipeline Agents instead) */}
       <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-        <h2 className="text-sm font-medium">Default Agent</h2>
-        <p className="text-xs text-text-muted">
-          Choose the default coding agent for new tasks on this repo. Users can override per-task.
-        </p>
-        <select
-          value={defaultAgentType}
-          onChange={(e) => setDefaultAgentType(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+        <button
+          type="button"
+          onClick={() => setShowLegacyAgent(!showLegacyAgent)}
+          className="flex items-center gap-1 text-xs text-text-muted hover:text-text"
         >
-          <option value="claude-code">Claude Code</option>
-          <option value="codex">OpenAI Codex</option>
-          <option value="copilot">GitHub Copilot</option>
-        </select>
+          {showLegacyAgent ? "Hide" : "Show"} legacy agent defaults
+          <span className="text-[10px] text-text-muted/50 ml-1">
+            (override via Pipeline Agents above)
+          </span>
+        </button>
       </section>
+      {showLegacyAgent && (
+        <>
+          <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+            <h2 className="text-sm font-medium">Default Agent</h2>
+            <p className="text-xs text-text-muted">
+              Choose the default coding agent for new tasks on this repo. Users can override
+              per-task.
+            </p>
+            <select
+              value={defaultAgentType}
+              onChange={(e) => setDefaultAgentType(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+            >
+              <option value="claude-code">Claude Code</option>
+              <option value="codex">OpenAI Codex</option>
+              <option value="copilot">GitHub Copilot</option>
+            </select>
+          </section>
 
-      {/* Agent Settings */}
-      <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-        <h2 className="text-sm font-medium">Agent Settings</h2>
-        <p className="text-xs text-text-muted">
-          Configure the Claude Code model and behavior for this repo.
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Model</label>
-            <select
-              value={claudeModel}
-              onChange={(e) => setClaudeModel(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            >
-              <option value="sonnet">Sonnet 4.6</option>
-              <option value="opus">Opus 4.6</option>
-              <option value="haiku">Haiku 4.5</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Context Window</label>
-            <select
-              value={claudeContextWindow}
-              onChange={(e) => setClaudeContextWindow(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            >
-              <option value="200k">200K tokens</option>
-              <option value="1m">1M tokens</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Effort Level</label>
-            <select
-              value={claudeEffort}
-              onChange={(e) => setClaudeEffort(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
-          <div className="flex items-end pb-1">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={claudeThinking}
-                onChange={(e) => setClaudeThinking(e.target.checked)}
-                className="w-4 h-4 rounded"
+          {/* Agent Settings */}
+          <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+            <h2 className="text-sm font-medium">Agent Settings</h2>
+            <p className="text-xs text-text-muted">
+              Configure the Claude Code model and behavior for this repo.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Model</label>
+                <select
+                  value={claudeModel}
+                  onChange={(e) => setClaudeModel(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                >
+                  <option value="sonnet">Sonnet 4.6</option>
+                  <option value="opus">Opus 4.6</option>
+                  <option value="haiku">Haiku 4.5</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Context Window</label>
+                <select
+                  value={claudeContextWindow}
+                  onChange={(e) => setClaudeContextWindow(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                >
+                  <option value="200k">200K tokens</option>
+                  <option value="1m">1M tokens</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Effort Level</label>
+                <select
+                  value={claudeEffort}
+                  onChange={(e) => setClaudeEffort(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div className="flex items-end pb-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={claudeThinking}
+                    onChange={(e) => setClaudeThinking(e.target.checked)}
+                    className="w-4 h-4 rounded"
+                  />
+                  <span className="text-sm">Extended Thinking</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Max Turns</label>
+              <NumberInput
+                min={1}
+                max={1000}
+                value={maxTurnsCoding}
+                onChange={(v) => setMaxTurnsCoding(v)}
+                fallback={250}
+                placeholder="250"
+                className="w-48 px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
               />
-              <span className="text-sm">Extended Thinking</span>
-            </label>
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs text-text-muted mb-1">Max Turns</label>
-          <NumberInput
-            min={1}
-            max={1000}
-            value={maxTurnsCoding}
-            onChange={(v) => setMaxTurnsCoding(v)}
-            fallback={250}
-            placeholder="250"
-            className="w-48 px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-          />
-        </div>
-      </section>
+            </div>
+          </section>
 
-      {/* Copilot Settings */}
-      <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-        <h2 className="text-sm font-medium">Copilot Settings</h2>
-        <p className="text-xs text-text-muted">
-          Configure GitHub Copilot model and behavior when using the Copilot agent for this repo.
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Model</label>
-            <select
-              value={copilotModel}
-              onChange={(e) => setCopilotModel(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            >
-              <option value="">Default</option>
-              <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
-              <option value="gpt-5">GPT-5</option>
-              <option value="gpt-5.2">GPT-5.2</option>
-              <option value="gpt-5.4">GPT-5.4</option>
-              <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Reasoning Effort</label>
-            <select
-              value={copilotEffort}
-              onChange={(e) => setCopilotEffort(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-            >
-              <option value="">Default</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
-        </div>
-      </section>
+          {/* Copilot Settings */}
+          <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
+            <h2 className="text-sm font-medium">Copilot Settings</h2>
+            <p className="text-xs text-text-muted">
+              Configure GitHub Copilot model and behavior when using the Copilot agent for this
+              repo.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Model</label>
+                <select
+                  value={copilotModel}
+                  onChange={(e) => setCopilotModel(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                >
+                  <option value="">Default</option>
+                  <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                  <option value="gpt-5">GPT-5</option>
+                  <option value="gpt-5.2">GPT-5.2</option>
+                  <option value="gpt-5.4">GPT-5.4</option>
+                  <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Reasoning Effort</label>
+                <select
+                  value={copilotEffort}
+                  onChange={(e) => setCopilotEffort(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                >
+                  <option value="">Default</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
 
       {/* MCP Servers */}
       <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
@@ -1430,14 +1473,6 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           );
         })()}
-      </section>
-
-      {/* Runtime Environment */}
-      <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-        <RuntimeManifestEditor
-          value={runtimeManifest as any}
-          onChange={setRuntimeManifest as any}
-        />
       </section>
 
       {/* Prompt override */}

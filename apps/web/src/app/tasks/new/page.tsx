@@ -19,6 +19,7 @@ export default function NewTaskPage() {
   const [existingTasks, setExistingTasks] = useState<any[]>([]);
   const [selectedDeps, setSelectedDeps] = useState<string[]>([]);
   const [showDeps, setShowDeps] = useState(false);
+  const [agents, setAgents] = useState<any[]>([]);
   const [form, setForm] = useState({
     title: "",
     prompt: "",
@@ -26,6 +27,7 @@ export default function NewTaskPage() {
     repoUrl: "",
     repoBranch: "main",
     agentType: "claude-code",
+    agentId: "",
     maxRetries: 3,
     priority: 100,
   });
@@ -51,6 +53,10 @@ export default function NewTaskPage() {
     api
       .listTaskTemplates()
       .then((res) => setTemplates(res.templates))
+      .catch(() => {});
+    api
+      .listAgents()
+      .then((res) => setAgents(res.agents))
       .catch(() => {});
     api
       .listTasks({ limit: 100 })
@@ -126,10 +132,11 @@ export default function NewTaskPage() {
         repoUrl: form.repoUrl,
         repoBranch: form.repoBranch,
         agentType: form.agentType,
+        ...(form.agentId ? { agentId: form.agentId } : {}),
         maxRetries: form.maxRetries,
         priority: form.priority,
         ...(selectedDeps.length > 0 ? { dependsOn: selectedDeps } : {}),
-      });
+      } as any);
       toast.success("Task created", { description: `Task "${form.title}" has been queued.` });
       router.push(`/tasks/${res.task.id}`);
     } catch (err) {
@@ -241,13 +248,31 @@ export default function NewTaskPage() {
           <div>
             <label className="block text-sm text-text-muted mb-1.5">Agent</label>
             <select
-              value={form.agentType}
-              onChange={(e) => setForm((f) => ({ ...f, agentType: e.target.value }))}
+              value={form.agentId || form.agentType}
+              onChange={(e) => {
+                const val = e.target.value;
+                const agent = agents.find((a: any) => a.id === val);
+                if (agent) {
+                  setForm((f) => ({ ...f, agentId: agent.id, agentType: agent.agentType }));
+                } else {
+                  setForm((f) => ({ ...f, agentId: "", agentType: val }));
+                }
+              }}
               className="w-full px-3 py-2 rounded-lg bg-bg-card border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors"
             >
-              <option value="claude-code">Claude Code</option>
-              <option value="codex">OpenAI Codex</option>
-              <option value="copilot">GitHub Copilot</option>
+              <optgroup label="Agent Profiles">
+                {agents.map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.agentType}
+                    {a.model ? ` · ${a.model}` : ""})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Default">
+                <option value="claude-code">Claude Code (default)</option>
+                <option value="codex">OpenAI Codex</option>
+                <option value="copilot">GitHub Copilot</option>
+              </optgroup>
             </select>
           </div>
         </div>
