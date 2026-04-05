@@ -1,24 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import * as mcpService from "../services/mcp-server-service.js";
-
-const runtimeManifestSchema = z.object({
-  languages: z
-    .array(
-      z.object({
-        name: z.enum(["node", "python", "go", "rust"]),
-        version: z.string().optional(),
-        tools: z.array(z.string()).optional(),
-      }),
-    )
-    .optional(),
-  systemPackages: z.array(z.string()).optional(),
-  nodePackages: z.array(z.string()).optional(),
-  pythonPackages: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
-  setup: z.array(z.string()).optional(),
-  capabilities: z.array(z.enum(["docker", "gpu", "browser"])).optional(),
-});
+import { runtimeManifestSchema } from "./shared-schemas.js";
 
 const createMcpServerSchema = z.object({
   name: z.string().min(1),

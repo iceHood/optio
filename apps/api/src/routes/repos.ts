@@ -10,30 +10,13 @@ import {
 } from "@optio/shared";
 import { requireRole } from "../plugins/auth.js";
 import { getGitHubToken } from "../services/github-token-service.js";
+import { runtimeManifestSchema } from "./shared-schemas.js";
 
 const createRepoSchema = z.object({
   repoUrl: z.string().min(1),
   fullName: z.string().min(1),
   defaultBranch: z.string().optional(),
   isPrivate: z.boolean().optional(),
-});
-
-const runtimeManifestSchema = z.object({
-  languages: z
-    .array(
-      z.object({
-        name: z.enum(["node", "python", "go", "rust"]),
-        version: z.string().optional(),
-        tools: z.array(z.string()).optional(),
-      }),
-    )
-    .optional(),
-  systemPackages: z.array(z.string()).optional(),
-  nodePackages: z.array(z.string()).optional(),
-  pythonPackages: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
-  setup: z.array(z.string()).optional(),
-  capabilities: z.array(z.enum(["docker", "gpu", "browser"])).optional(),
 });
 
 const updateRepoSchema = z.object({
