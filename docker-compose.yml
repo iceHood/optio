@@ -78,6 +78,8 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3100}
 
       # Agent configuration
+      OPTIO_API_INTERNAL_URL: http://api:4000
+      OPTIO_DOCKER_NETWORK: optio_default
       OPTIO_AGENT_IMAGE: ${OPTIO_AGENT_IMAGE:-optio-base:latest}
       OPTIO_IMAGE_PULL_POLICY: Never
       OPTIO_MAX_CONCURRENT: ${OPTIO_MAX_CONCURRENT:-5}

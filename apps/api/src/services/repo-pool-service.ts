@@ -296,6 +296,12 @@ spec:
       agentEnv.OPTIO_SECRET_PROXY = "true";
     }
 
+    // Docker mode: connect agent containers to the same network as the API
+    // so they can reach the credential helper and other services.
+    const dockerNetwork = isDockerRuntime()
+      ? (process.env.OPTIO_DOCKER_NETWORK ?? "optio_default")
+      : undefined;
+
     const spec: ContainerSpec = {
       name: podName,
       image,
@@ -303,6 +309,7 @@ spec:
       env: agentEnv,
       workDir: "/workspace",
       imagePullPolicy: (process.env.OPTIO_IMAGE_PULL_POLICY as any) ?? "Never",
+      networkMode: dockerNetwork,
       volumes,
       cpuRequest: resources?.cpuRequest,
       cpuLimit: resources?.cpuLimit,
