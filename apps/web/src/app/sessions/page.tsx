@@ -6,12 +6,14 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { cn, formatRelativeTime, formatDuration } from "@/lib/utils";
 import { Plus, Terminal, Loader2, FolderGit2, CircleDot, StopCircle } from "lucide-react";
+import { useStore } from "@/hooks/use-store";
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [activeCount, setActiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "active" | "ended">("all");
+  const isDocker = useStore((s) => s.runtime) === "docker";
   const [repos, setRepos] = useState<any[]>([]);
   const [selectedRepo, setSelectedRepo] = useState("");
   const [creating, setCreating] = useState(false);
@@ -65,7 +67,7 @@ export default function SessionsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
           <p className="text-sm text-text-muted mt-1">
-            Interactive workspaces connected to repo pods
+            Interactive workspaces connected to repo {isDocker ? "containers" : "pods"}
             {activeCount > 0 && (
               <span className="ml-2 inline-flex items-center gap-1 text-primary">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
@@ -128,7 +130,8 @@ export default function SessionsPage() {
           <Terminal className="w-10 h-10 mx-auto mb-3 opacity-50" />
           <p className="text-sm">No sessions found</p>
           <p className="text-xs mt-1">
-            Start a new session to get an interactive terminal connected to a repo pod.
+            Start a new session to get an interactive terminal connected to a repo{" "}
+            {isDocker ? "container" : "pod"}.
           </p>
         </div>
       ) : (

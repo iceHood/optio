@@ -240,7 +240,7 @@ export default function ClusterPage() {
           })}
           {pods.length === 0 && (
             <div className="text-center py-8 text-text-muted text-sm">
-              No pods in the optio namespace
+              {isDocker ? "No containers running" : "No pods in the optio namespace"}
             </div>
           )}
         </div>

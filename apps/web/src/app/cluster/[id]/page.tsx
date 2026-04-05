@@ -26,7 +26,7 @@ export default function PodDetailPage({ params }: { params: Promise<{ id: string
   const isDocker = useStore((s) => s.runtime) === "docker";
   const router = useRouter();
   const [pod, setPod] = useState<any>(null);
-  usePageTitle(pod?.podName ?? "Pod");
+  usePageTitle(pod?.podName ?? (isDocker ? "Container" : "Pod"));
   const [loading, setLoading] = useState(true);
   const [healthEvents, setHealthEvents] = useState<any[]>([]);
   const [restarting, setRestarting] = useState(false);
@@ -48,14 +48,15 @@ export default function PodDetailPage({ params }: { params: Promise<{ id: string
   }, [id]);
 
   const handleRestart = async () => {
-    if (!confirm("Restart this pod? Active tasks will be failed.")) return;
+    if (!confirm(`Restart this ${isDocker ? "container" : "pod"}? Active tasks will be failed.`))
+      return;
     setRestarting(true);
     try {
       await api.restartPod(id);
-      toast.success("Pod restart initiated");
+      toast.success(`${isDocker ? "Container" : "Pod"} restart initiated`);
       router.push("/cluster");
     } catch {
-      toast.error("Failed to restart pod");
+      toast.error(`Failed to restart ${isDocker ? "container" : "pod"}`);
     }
     setRestarting(false);
   };
@@ -69,7 +70,11 @@ export default function PodDetailPage({ params }: { params: Promise<{ id: string
   }
 
   if (!pod) {
-    return <div className="flex items-center justify-center h-full text-error">Pod not found</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-error">
+        {isDocker ? "Container" : "Pod"} not found
+      </div>
+    );
   }
 
   const runtimeState = pod.runtimeStatus?.state ?? pod.state;
@@ -83,7 +88,9 @@ export default function PodDetailPage({ params }: { params: Promise<{ id: string
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <Server className="w-5 h-5 text-text-muted" />
-        <h1 className="text-2xl font-semibold tracking-tight font-mono">{pod.podName ?? "Pod"}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight font-mono">
+          {pod.podName ?? (isDocker ? "Container" : "Pod")}
+        </h1>
         <Circle
           className={cn(
             "w-3 h-3 fill-current",
@@ -185,7 +192,7 @@ export default function PodDetailPage({ params }: { params: Promise<{ id: string
           </div>
         ) : (
           <div className="text-center py-6 text-text-muted text-sm border border-dashed border-border rounded-lg">
-            No tasks have run on this pod yet.
+            No tasks have run on this {isDocker ? "container" : "pod"} yet.
           </div>
         )}
       </div>

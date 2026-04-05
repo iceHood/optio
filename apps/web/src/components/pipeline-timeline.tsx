@@ -380,7 +380,7 @@ function getCurrentStageId(
 
 const STAGE_TOOLTIPS: Record<string, string> = {
   queued: "Task is waiting in the job queue for a worker to pick it up",
-  setup: "Provisioning a pod and creating a git worktree for the task",
+  setup: "Provisioning the workspace and creating a git worktree for the task",
   coding: "The AI agent is writing code to complete the task",
   reviewing: "The AI agent is reviewing the pull request",
   pr: "The agent will open a pull request with its changes",

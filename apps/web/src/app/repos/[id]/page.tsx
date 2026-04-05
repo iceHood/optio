@@ -493,8 +493,9 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
           <>
             <h3 className="text-xs font-medium text-text-muted pt-2">Network Egress Policy</h3>
             <p className="text-[10px] text-text-muted/60">
-              Control outbound network access from agent pods. Requires a CNI plugin that supports
-              NetworkPolicy (Calico, Cilium, etc.).
+              Control outbound network access from agent {isDocker ? "containers" : "pods"}.{" "}
+              {!isDocker &&
+                "Requires a CNI plugin that supports NetworkPolicy (Calico, Cilium, etc.)."}
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -510,7 +511,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
                 <p className="text-[10px] text-text-muted/60 mt-1">
                   {networkPolicy === "restricted"
                     ? "Egress limited to DNS, AI APIs (Anthropic, OpenAI), GitHub, and the Optio API server."
-                    : "No network restrictions. Agent pods can reach any endpoint."}
+                    : `No network restrictions. Agent ${isDocker ? "containers" : "pods"} can reach any endpoint.`}
                 </p>
               </div>
             </div>
@@ -547,7 +548,8 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
               <div>
                 <span className="text-sm">Enable secret proxy</span>
                 <p className="text-[10px] text-text-muted/60 mt-0.5">
-                  Adds an Envoy sidecar to agent pods. Requires &ldquo;Restricted&rdquo; network
+                  Adds an Envoy {isDocker ? "proxy" : "sidecar"} to agent{" "}
+                  {isDocker ? "containers" : "pods"}. Requires &ldquo;Restricted&rdquo; network
                   policy to prevent agents from bypassing the proxy.
                 </p>
               </div>

@@ -62,13 +62,15 @@ export function PodsList({
   return (
     <div className="min-w-0 overflow-hidden">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-text-heading">Pods</h2>
+        <h2 className="text-sm font-medium text-text-heading">
+          {isDocker ? "Containers" : "Pods"}
+        </h2>
       </div>
       {pods.length === 0 ? (
         <EmptyState
           icon={Container}
           title={isDocker ? "No containers running" : "No pods running"}
-          description="Pods are created automatically when tasks start. They stay warm for fast iteration."
+          description={`${isDocker ? "Containers" : "Pods"} are created automatically when tasks start. They stay warm for fast iteration.`}
         />
       ) : (
         <div className="space-y-1.5">

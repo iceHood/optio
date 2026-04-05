@@ -189,7 +189,7 @@ export function RuntimeManifestEditor({
           {description ??
             (compact
               ? "Declare runtime dependencies this agent needs. These are additive on top of the repo environment."
-              : "Define the execution environment for this repository. Languages, packages, and capabilities are composed into the pod runtime.")}
+              : "Define the execution environment for this repository. Languages, packages, and capabilities are composed into the runtime.")}
           {detected && " Auto-detected from repository contents."}
         </p>
       </div>
@@ -362,7 +362,7 @@ export function RuntimeManifestEditor({
               Setup Commands
             </label>
             <p className="text-[10px] text-text-muted/60 mb-1.5">
-              Shell commands run at pod startup. One per line.
+              Shell commands run at startup. One per line.
             </p>
             <textarea
               value={(value.setup ?? []).join("\n")}
