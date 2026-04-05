@@ -173,55 +173,17 @@ describe("mergeManifests", () => {
 // ── selectImage ─────────────────────────────────────────────────────────────
 
 describe("selectImage", () => {
-  it("selects base for empty manifest", () => {
-    const { preset } = selectImage({});
-    expect(preset).toBe("base");
+  it("always returns base — languages are installed at runtime", () => {
+    expect(selectImage({}).preset).toBe("base");
+    expect(selectImage({ languages: [{ name: "node" }] }).preset).toBe("base");
+    expect(selectImage({ languages: [{ name: "python" }] }).preset).toBe("base");
+    expect(selectImage({ languages: [{ name: "go" }, { name: "rust" }] }).preset).toBe("base");
+    expect(selectImage({ capabilities: ["docker"] }).preset).toBe("base");
   });
 
-  it("selects node preset for node-only", () => {
-    const { preset } = selectImage({ languages: [{ name: "node" }] });
-    expect(preset).toBe("node");
-  });
-
-  it("selects python preset for python-only", () => {
-    const { preset } = selectImage({ languages: [{ name: "python" }] });
-    expect(preset).toBe("python");
-  });
-
-  it("selects go preset for go-only", () => {
-    const { preset } = selectImage({ languages: [{ name: "go" }] });
-    expect(preset).toBe("go");
-  });
-
-  it("selects rust preset for rust-only", () => {
-    const { preset } = selectImage({ languages: [{ name: "rust" }] });
-    expect(preset).toBe("rust");
-  });
-
-  it("selects full for multi-language", () => {
-    const { preset } = selectImage({
-      languages: [{ name: "node" }, { name: "python" }, { name: "go" }],
-    });
-    expect(preset).toBe("full");
-  });
-
-  it("selects full for node + rust (no single preset covers both)", () => {
-    const { preset } = selectImage({
-      languages: [{ name: "node" }, { name: "rust" }],
-    });
-    expect(preset).toBe("full");
-  });
-
-  it("selects dind when docker capability needed and no language", () => {
-    const { preset } = selectImage({ capabilities: ["docker"] });
-    // dind or base+docker — dind is more specific
-    expect(["dind", "full"]).toContain(preset);
-  });
-
-  it("prefers leaner image when multiple cover requirements", () => {
-    // node-only: both "node" and "full" cover it, but "node" is leaner
-    const { preset } = selectImage({ languages: [{ name: "node" }] });
-    expect(preset).toBe("node");
+  it("returns optio-base:latest tag", () => {
+    const { image } = selectImage({ languages: [{ name: "node" }, { name: "python" }] });
+    expect(image).toBe("optio-base:latest");
   });
 });
 
@@ -342,9 +304,13 @@ describe("resolveRuntime", () => {
       },
     ];
     const result = resolveRuntime(tagged);
-    expect(result.image).toContain("optio-node");
+    expect(result.image).toBe("optio-base:latest");
     expect(result.hash).toMatch(/^[0-9a-f]{16}$/);
     expect(result.conflicts).toEqual([]);
+    // Node should be in the install plan since base only has minimal node
+    expect(result.podInstallPlan.languageInstalls).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "node" })]),
+    );
   });
 
   it("resolves repo + agent + skill with additive deps", () => {
@@ -372,7 +338,7 @@ describe("resolveRuntime", () => {
       },
     ];
     const result = resolveRuntime(tagged);
-    expect(result.image).toContain("optio-full");
+    expect(result.image).toBe("optio-base:latest");
     // Pod plan has repo's libpq-dev
     expect(result.podInstallPlan.systemPackages).toContain("libpq-dev");
     // Task plan has skill's libnss3 + playwright

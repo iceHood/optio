@@ -7,10 +7,9 @@ export const PRESET_IMAGES = {
     description: "Git, Node.js, Python 3, gh CLI, Claude Code. Minimal footprint.",
     languages: [],
     provides: {
-      languages: [
-        { name: "node", version: "22" },
-        { name: "python", version: "3" },
-      ],
+      // Base has node/python at a minimal level (for Claude Code and scripts),
+      // but NOT as dev-ready toolchains. When a manifest requests "node" or
+      // "python", the provisioning system installs the full dev environment.
     } satisfies RuntimeManifest,
   },
   node: {

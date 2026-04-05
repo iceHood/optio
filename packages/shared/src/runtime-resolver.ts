@@ -117,81 +117,17 @@ export function mergeManifests(tagged: TaggedManifest[]): {
 // ── Image Selection ─────────────────────────────────────────────────────────
 
 /**
- * Map from RuntimeLanguage to the preset's old `languages` array values.
- * Base provides node/python at a minimal level (no dev tooling), so it is
- * NOT considered a "targeted" image for those languages.
- * This mapping uses the old `languages` string array to determine which
- * presets are *intended* for a given language (have full dev tooling).
- */
-const LANG_TO_PRESET_LANGS: Record<string, string[]> = {
-  node: ["javascript", "typescript"],
-  python: ["python"],
-  go: ["go"],
-  rust: ["rust"],
-};
-
-/**
- * Select the smallest preset image that satisfies the merged manifest.
+ * Always use the base image. Languages, packages, and tools are installed
+ * dynamically at runtime via the manifest provisioning system:
+ * - Pod-level: repo-init.sh reads OPTIO_RUNTIME_MANIFEST
+ * - Task-level: exec script reads OPTIO_TASK_RUNTIME
  *
- * Strategy:
- * 1. Map required languages to presets that are *targeted* for those languages
- *    (not just incidentally provide a bare runtime).
- * 2. Pick the leanest image that covers all requirements.
- * 3. Fallback to "full" if no single preset covers everything.
+ * There are NO static preset images required. The base image (Ubuntu + git +
+ * Node.js + Python 3 + Claude Code) is the only image needed. Everything
+ * else is composed at runtime from the merged manifest.
  */
-export function selectImage(merged: RuntimeManifest): { image: string; preset: PresetImageId } {
-  const requiredLangs = new Set((merged.languages ?? []).map((l) => l.name));
-  const requiredCaps = new Set(merged.capabilities ?? []);
-
-  // No specific language requirements → use base
-  if (requiredLangs.size === 0 && requiredCaps.size === 0) {
-    return { image: PRESET_IMAGES.base.tag, preset: "base" };
-  }
-
-  type Candidate = { preset: PresetImageId; tag: string; extraLangs: number };
-  const candidates: Candidate[] = [];
-
-  for (const [key, preset] of Object.entries(PRESET_IMAGES)) {
-    const presetId = key as PresetImageId;
-    const provides = preset.provides as RuntimeManifest;
-
-    // Use the old `languages` string array to check if this preset is
-    // *targeted* for the required languages (has full dev tooling).
-    const targetedLangs = new Set(preset.languages as readonly string[]);
-    const providedCaps = new Set(provides.capabilities ?? []);
-
-    // Check language coverage via targeted languages
-    let coveredLangs = 0;
-    for (const lang of requiredLangs) {
-      const presetLangKeys = LANG_TO_PRESET_LANGS[lang] ?? [];
-      if (presetLangKeys.some((k) => targetedLangs.has(k))) {
-        coveredLangs++;
-      }
-    }
-
-    // Check capability coverage
-    let coveredCaps = 0;
-    for (const cap of requiredCaps) {
-      if (providedCaps.has(cap)) coveredCaps++;
-    }
-
-    const langCoverage = requiredLangs.size > 0 ? coveredLangs / requiredLangs.size : 1;
-    const capCoverage = requiredCaps.size > 0 ? coveredCaps / requiredCaps.size : 1;
-
-    if (langCoverage === 1 && capCoverage === 1) {
-      const extraLangs = targetedLangs.size - coveredLangs;
-      candidates.push({ preset: presetId, tag: preset.tag, extraLangs });
-    }
-  }
-
-  if (candidates.length > 0) {
-    // Pick leanest fully-covering image
-    candidates.sort((a, b) => a.extraLangs - b.extraLangs);
-    return { image: candidates[0].tag, preset: candidates[0].preset };
-  }
-
-  // Nothing covers everything — use full (it has the most)
-  return { image: PRESET_IMAGES.full.tag, preset: "full" };
+export function selectImage(_merged: RuntimeManifest): { image: string; preset: PresetImageId } {
+  return { image: PRESET_IMAGES.base.tag, preset: "base" };
 }
 
 // ── Install Plan ────────────────────────────────────────────────────────────
