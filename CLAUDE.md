@@ -147,7 +147,7 @@ Routes: `GET /api/tasks/:id/subtasks`, `POST /api/tasks/:id/subtasks`, `GET /api
 
 Agents are reusable configuration bundles that can be assigned to pipeline stages per repo. This replaces the old approach of scattering agent config across `repos` table columns.
 
-**Agent definition** (`agents` table): name, agentType (claude-code/codex/copilot), model, contextWindow, thinking, effort, imagePreset, customDockerfile, extraPackages, setupCommands, maxTurns, promptTemplate. Agents can also have associated MCP servers (`agent_mcp_servers`) and skill sets (`agent_skill_sets`).
+**Agent definition** (`agents` table): name, agentType (claude-code/codex/copilot), model, contextWindow, thinking, effort, runtimeRequires (jsonb RuntimeManifest), maxTurns, promptTemplate. Agents can also have associated MCP servers (`agent_mcp_servers`) and skill sets (`agent_skill_sets`). **Agents are environment-independent** — they declare additive runtime dependencies (`runtimeRequires`) but do not own the execution environment. Legacy fields `imagePreset`, `customDockerfile`, `extraPackages`, `setupCommands` are deprecated.
 
 **Pipeline stages** (`repo_pipeline_stages` table): Each repo can define an ordered list of stages (e.g., coding → review → qa), each optionally assigned an agent. When no agent is assigned, the stage falls back to repo-level config.
 
@@ -159,9 +159,49 @@ Agents are reusable configuration bundles that can be assigned to pipeline stage
 
 **Stage progression** (`pipeline-stage-service.ts`): When a stage completes, `triggerNextStage()` finds the next enabled stage and creates a blocking subtask with the appropriate agent. For the `review` stage, it delegates to the existing `review-service.ts`.
 
-**Task-worker integration**: The worker calls `resolveAgentConfig()` early and uses the resolved config for model, image preset, MCP servers, skills, max turns, extra packages, and setup commands. The resolved `agentId` is stored on the task record for audit.
+**Task-worker integration**: The worker calls `resolveAgentConfig()` early, then `composeRuntime()` to merge all runtime manifests (repo + agent + MCP + skill) into a `ResolvedRuntime` with optimal image selection and install plans. The resolved `agentId` is stored on the task record for audit.
 
 Routes: `GET/POST /api/agents`, `GET/PATCH/DELETE /api/agents/:id`, `GET/PUT /api/agents/:id/mcp-servers`, `GET/PUT /api/agents/:id/skill-sets`, `GET/PUT /api/repos/:id/pipeline`.
+
+### Runtime manifest composition
+
+The execution environment is defined declaratively via `RuntimeManifest` objects rather than static image presets. This enforces a clear separation: **repos own the environment, agents are environment-independent**.
+
+**Manifest sources** — four entities can declare runtime requirements:
+
+| Source     | Field                    | Tier            | Purpose                                       |
+| ---------- | ------------------------ | --------------- | --------------------------------------------- |
+| Repo       | `repos.runtimeManifest`  | Pod (shared)    | Base languages, system packages, capabilities |
+| Agent      | `agents.runtimeRequires` | Task (per-exec) | Additive deps for agent's skills/MCPs         |
+| MCP Server | `mcp_servers.requires`   | Task            | Packages the MCP server needs                 |
+| Skill      | `custom_skills.requires` | Task            | Packages the skill needs                      |
+
+**RuntimeManifest** (`packages/shared/src/types/runtime-manifest.ts`):
+
+```typescript
+interface RuntimeManifest {
+  languages?: LanguageRequirement[]; // [{name: "node", version: "22", tools: ["pnpm"]}]
+  systemPackages?: string[]; // apt packages
+  nodePackages?: string[]; // global npm packages
+  pythonPackages?: string[]; // pip packages
+  env?: Record<string, string>; // environment variables
+  setup?: string[]; // shell commands (escape hatch)
+  capabilities?: RuntimeCapability[]; // "docker" | "gpu" | "browser"
+}
+```
+
+**Composition flow** (`runtime-composition-service.ts` → `runtime-resolver.ts`):
+
+1. Collect `TaggedManifest` from repo, agent, MCP servers, and skills
+2. `mergeManifests()` — union languages (highest version wins), deduplicate packages, detect env var conflicts
+3. `selectImage()` — pick the leanest preset image that covers all language requirements
+4. `splitByTier()` — separate pod-level (repo) from task-level (agent/mcp/skill) deps
+5. `computeInstallPlan()` — delta between what's needed and what the image provides
+6. Result: `ResolvedRuntime` with `image`, `podInstallPlan`, `taskInstallPlan`, `hash` (cache key)
+
+**Legacy compatibility**: When `runtimeManifest` is null, `synthesizeFromLegacy()` converts old `imagePreset` + `extraPackages` + `setupCommands` into a manifest automatically.
+
+**Pod provisioning**: `repo-init.sh` reads `OPTIO_RUNTIME_MANIFEST` (JSON `InstallPlan`), installs system/node/python packages, sets env vars, and runs setup commands. Falls back to legacy `OPTIO_EXTRA_PACKAGES` for older images.
 
 ### Code review agent
 
@@ -248,13 +288,14 @@ Three modes, selected during the setup wizard:
 
 The auth service is at `apps/api/src/services/auth-service.ts`. For usage tracking, it falls back to reading `CLAUDE_CODE_OAUTH_TOKEN` from the secrets store when the Keychain is unavailable (k8s deployments).
 
-### Auto-detect image preset
+### Auto-detect repo environment
 
-When adding a repo, `repo-detect-service.ts` queries the GitHub API for root-level files and selects the image preset:
+When adding a repo, `repo-detect-service.ts` queries the GitHub API for root-level files and builds a `RuntimeManifest`:
 
-- `Cargo.toml` → rust, `package.json` → node, `go.mod` → go, `pyproject.toml`/`setup.py`/`requirements.txt` → python
-- Multiple languages → full
+- `Cargo.toml` → `{languages: [{name: "rust"}]}`, `package.json` → `{languages: [{name: "node"}]}`, etc.
+- Multiple languages → manifest with all detected languages
 - Also detects `testCommand` (e.g., `cargo test`, `npm test`, `go test ./...`, `pytest`)
+- Legacy `imagePreset` is still set for backward compatibility
 
 ### Prompt templates
 
@@ -335,6 +376,7 @@ apps/
                       comment-service, schedule-service, slack-service, task-template-service,
                       workflow-service, dependency-service, mcp-server-service, skill-service,
                       agent-service, agent-config-resolver, pipeline-stage-service,
+                      runtime-composition-service,
                       oauth/ (github, google, gitlab)
       plugins/        auth (session validation middleware)
       workers/        task-worker (main job processor), pr-watcher-worker, repo-cleanup-worker,
@@ -350,7 +392,7 @@ apps/
                       /workflows, /agents, /agents/[id]
       components/     task-card, task-list, log-viewer, web-terminal, event-timeline, state-badge,
                       skeleton, session-terminal, session-chat, split-pane, activity-feed,
-                      pipeline-timeline,
+                      pipeline-timeline, runtime-manifest-editor,
                       layout/ (sidebar, layout-shell, setup-check, ws-provider, user-menu,
                       theme-provider, themed-toaster, workspace-switcher)
       middleware.ts   Next.js auth middleware (redirects unauthenticated users to /login)
@@ -375,7 +417,7 @@ scripts/              setup-local.sh, update-local.sh, repo-init.sh, agent-entry
 
 ## Database Schema
 
-~30 tables (Drizzle, ~41 migrations). Key tables:
+~30 tables (Drizzle, ~42 migrations). Key tables:
 
 **Core:**
 
@@ -388,7 +430,7 @@ scripts/              setup-local.sh, update-local.sh, repo-init.sh, agent-entry
 
 **Infrastructure:**
 
-- **repos** — id, repoUrl, fullName, defaultBranch, isPrivate, imagePreset, autoMerge, claudeModel, claudeContextWindow, claudeThinking, claudeEffort, autoResume, maxConcurrentTasks, maxPodInstances, maxAgentsPerPod, reviewEnabled, reviewTrigger, slackEnabled, slackWebhookUrl, workspaceId, etc.
+- **repos** — id, repoUrl, fullName, defaultBranch, isPrivate, runtimeManifest (jsonb RuntimeManifest), imagePreset (deprecated), autoMerge, claudeModel, claudeContextWindow, claudeThinking, claudeEffort, autoResume, maxConcurrentTasks, maxPodInstances, maxAgentsPerPod, reviewEnabled, reviewTrigger, slackEnabled, slackWebhookUrl, workspaceId, etc.
 - **repo_pods** — id, repoUrl, repoBranch, podName, podId, state, activeTaskCount, instanceIndex, workspaceId
 - **pod_health_events** — id, repoPodId, repoUrl, eventType, podName, message, createdAt
 - **secrets** — id, name, scope, encryptedValue (bytea), iv, authTag (AES-256-GCM), workspaceId
@@ -413,12 +455,12 @@ scripts/              setup-local.sh, update-local.sh, repo-init.sh, agent-entry
 - **prompt_templates** — id, name, template, isDefault, repoUrl, autoMerge
 - **schedules** / **schedule_runs** — scheduled/recurring task execution
 - **workflow_templates** / **workflow_runs** — multi-step workflow automation
-- **mcp_servers** — MCP server configs (global or per-repo)
-- **custom_skills** — custom agent skills/commands
+- **mcp_servers** — MCP server configs (global or per-repo), requires (jsonb RuntimeManifest for runtime deps)
+- **custom_skills** — custom agent skills/commands, requires (jsonb RuntimeManifest for runtime deps)
 
 **Agent Pipeline:**
 
-- **agents** — id, name, description, agentType, model, contextWindow, thinking, effort, imagePreset, customDockerfile, extraPackages, setupCommands, maxTurns, promptTemplate, workspaceId, timestamps
+- **agents** — id, name, description, agentType, model, contextWindow, thinking, effort, runtimeRequires (jsonb RuntimeManifest), maxTurns, promptTemplate, workspaceId, timestamps. Legacy: imagePreset, customDockerfile, extraPackages, setupCommands (deprecated)
 - **agent_mcp_servers** — id, agentId, mcpServerId (join table, cascade delete)
 - **agent_skill_sets** — id, agentId, skillSetId (join table, cascade delete)
 - **repo_pipeline_stages** — id, repoId, stage, stageOrder, agentId (set null on delete), enabled, timestamps

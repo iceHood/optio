@@ -7,7 +7,6 @@ import {
   TASK_FILE_PATH,
   DEFAULT_MAX_TURNS_CODING,
   DEFAULT_MAX_TURNS_REVIEW,
-  type PresetImageId,
   msUntilOffPeak,
   classifyError,
 } from "@optio/shared";
@@ -401,18 +400,41 @@ export function startTaskWorker() {
           allEnv.OPTIO_RESTART_FROM_BRANCH = "true";
         }
 
-        // Inject setup config: repo base packages + agent additions (additive)
-        const repoPkgs = repoConfig?.extraPackages ?? "";
-        const agentPkgs = resolved.extraPackages ?? "";
-        const effectiveExtraPackages = [repoPkgs, agentPkgs].filter(Boolean).join(", ");
-        const repoSetup = repoConfig?.setupCommands ?? "";
-        const agentSetup = resolved.setupCommands ?? "";
-        const effectiveSetupCommands = [repoSetup, agentSetup].filter(Boolean).join(" && ");
-        if (effectiveExtraPackages) {
-          allEnv.OPTIO_EXTRA_PACKAGES = effectiveExtraPackages;
+        // ── Runtime composition: merge repo + agent + skill + MCP manifests ──
+        const { composeRuntime } = await import("../services/runtime-composition-service.js");
+        const { isEmptyInstallPlan } = await import("@optio/shared/runtime-resolver");
+        const resolvedRuntime = composeRuntime(repoConfig, resolved, mcpServers, skills);
+        log.info(
+          {
+            image: resolvedRuntime.image,
+            hash: resolvedRuntime.hash,
+            conflicts: resolvedRuntime.conflicts.length,
+          },
+          "Runtime composed",
+        );
+
+        // Pod-level install plan (shared across tasks in this pod)
+        if (!isEmptyInstallPlan(resolvedRuntime.podInstallPlan)) {
+          allEnv.OPTIO_RUNTIME_MANIFEST = JSON.stringify(resolvedRuntime.podInstallPlan);
         }
-        if (effectiveSetupCommands) {
-          allEnv.OPTIO_SETUP_COMMANDS = effectiveSetupCommands;
+        // Task-level install plan (per-task agent/skill/mcp deps)
+        if (!isEmptyInstallPlan(resolvedRuntime.taskInstallPlan)) {
+          allEnv.OPTIO_TASK_RUNTIME = JSON.stringify(resolvedRuntime.taskInstallPlan);
+        }
+        // Legacy compat: still set OPTIO_EXTRA_PACKAGES for older images
+        const legacyPkgs = [
+          ...resolvedRuntime.podInstallPlan.systemPackages,
+          ...resolvedRuntime.taskInstallPlan.systemPackages,
+        ];
+        if (legacyPkgs.length > 0) {
+          allEnv.OPTIO_EXTRA_PACKAGES = legacyPkgs.join(", ");
+        }
+        const legacySetup = [
+          ...resolvedRuntime.podInstallPlan.setupCommands,
+          ...resolvedRuntime.taskInstallPlan.setupCommands,
+        ];
+        if (legacySetup.length > 0) {
+          allEnv.OPTIO_SETUP_COMMANDS = legacySetup.join(" && ");
         }
 
         // For max-subscription mode, fetch the OAuth token from the auth proxy
@@ -460,6 +482,9 @@ export function startTaskWorker() {
           ...(process.env.GITHUB_APP_BOT_EMAIL
             ? { GITHUB_APP_BOT_EMAIL: process.env.GITHUB_APP_BOT_EMAIL }
             : {}),
+          ...(allEnv.OPTIO_RUNTIME_MANIFEST
+            ? { OPTIO_RUNTIME_MANIFEST: allEnv.OPTIO_RUNTIME_MANIFEST }
+            : {}),
           ...(allEnv.OPTIO_EXTRA_PACKAGES
             ? { OPTIO_EXTRA_PACKAGES: allEnv.OPTIO_EXTRA_PACKAGES }
             : {}),
@@ -471,9 +496,8 @@ export function startTaskWorker() {
         // Get or create a repo pod (with multi-pod scheduling)
         log.info("Getting repo pod");
         const isRetry = (task.retryCount ?? 0) > 0;
-        // Image comes from repo (repo = execution environment), not from agent
-        const effectiveImagePreset = repoConfig?.imagePreset ?? "base";
-        const imageConfig = { preset: effectiveImagePreset as PresetImageId };
+        // Image selected by runtime composition (based on merged manifest)
+        const imageConfig = { customImage: resolvedRuntime.image };
         const pod = await repoPool.getOrCreateRepoPod(
           task.repoUrl,
           task.repoBranch,

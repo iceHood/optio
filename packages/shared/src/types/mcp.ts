@@ -5,6 +5,8 @@ export interface McpServerConfig {
   args: string[];
   env?: Record<string, string> | null;
   installCommand?: string | null;
+  /** Declarative runtime dependencies this MCP server needs. */
+  requires?: import("./runtime-manifest.js").RuntimeManifest | null;
   scope: string; // "global" or repo URL
   repoUrl?: string | null;
   workspaceId?: string | null;
@@ -37,6 +39,8 @@ export interface CustomSkillConfig {
   name: string;
   description?: string | null;
   prompt: string;
+  /** Declarative runtime dependencies this skill needs. */
+  requires?: import("./runtime-manifest.js").RuntimeManifest | null;
   scope: string; // "global" or repo URL
   repoUrl?: string | null;
   workspaceId?: string | null;

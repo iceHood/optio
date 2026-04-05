@@ -234,6 +234,7 @@ function mapRow(row: typeof mcpServers.$inferSelect): McpServerConfig {
     args: (row.args as string[]) ?? [],
     env: row.env as Record<string, string> | null,
     installCommand: row.installCommand,
+    requires: row.requires as McpServerConfig["requires"],
     scope: row.scope,
     repoUrl: row.repoUrl,
     workspaceId: row.workspaceId,

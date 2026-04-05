@@ -2,6 +2,27 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import * as agentService from "../services/agent-service.js";
 
+// Zod schema for RuntimeManifest (permissive — validated at composition time)
+const runtimeManifestSchema = z
+  .object({
+    languages: z
+      .array(
+        z.object({
+          name: z.enum(["node", "python", "go", "rust"]),
+          version: z.string().optional(),
+          tools: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
+    systemPackages: z.array(z.string()).optional(),
+    nodePackages: z.array(z.string()).optional(),
+    pythonPackages: z.array(z.string()).optional(),
+    env: z.record(z.string()).optional(),
+    setup: z.array(z.string()).optional(),
+    capabilities: z.array(z.enum(["docker", "gpu", "browser"])).optional(),
+  })
+  .optional();
+
 const createAgentSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -10,10 +31,11 @@ const createAgentSchema = z.object({
   contextWindow: z.string().optional(),
   thinking: z.boolean().optional(),
   effort: z.enum(["low", "medium", "high"]).optional(),
-  imagePreset: z.string().optional(),
-  customDockerfile: z.string().optional(),
-  extraPackages: z.string().optional(),
-  setupCommands: z.string().optional(),
+  imagePreset: z.string().optional(), // @deprecated
+  customDockerfile: z.string().optional(), // @deprecated
+  extraPackages: z.string().optional(), // @deprecated
+  setupCommands: z.string().optional(), // @deprecated
+  runtimeRequires: runtimeManifestSchema,
   maxTurns: z.number().int().positive().optional(),
   promptTemplate: z.string().optional(),
 });
@@ -26,10 +48,11 @@ const updateAgentSchema = z.object({
   contextWindow: z.string().nullable().optional(),
   thinking: z.boolean().nullable().optional(),
   effort: z.enum(["low", "medium", "high"]).nullable().optional(),
-  imagePreset: z.string().nullable().optional(),
-  customDockerfile: z.string().nullable().optional(),
-  extraPackages: z.string().nullable().optional(),
-  setupCommands: z.string().nullable().optional(),
+  imagePreset: z.string().nullable().optional(), // @deprecated
+  customDockerfile: z.string().nullable().optional(), // @deprecated
+  extraPackages: z.string().nullable().optional(), // @deprecated
+  setupCommands: z.string().nullable().optional(), // @deprecated
+  runtimeRequires: runtimeManifestSchema.nullable(),
   maxTurns: z.number().int().positive().nullable().optional(),
   promptTemplate: z.string().nullable().optional(),
 });

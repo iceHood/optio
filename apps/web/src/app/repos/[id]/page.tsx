@@ -6,8 +6,12 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { api } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { PRESET_IMAGES, type PresetImageId } from "@optio/shared";
 import { NumberInput } from "@/components/number-input";
+import {
+  RuntimeManifestEditor,
+  manifestFromLegacy,
+  isManifestEmpty,
+} from "@/components/runtime-manifest-editor";
 import {
   Loader2,
   FolderGit2,
@@ -41,9 +45,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
   const [saving, setSaving] = useState(false);
 
   // Editable fields
-  const [imagePreset, setImagePreset] = useState("base");
-  const [extraPackages, setExtraPackages] = useState("");
-  const [setupCommands, setSetupCommands] = useState("");
+  const [runtimeManifest, setRuntimeManifest] = useState<Record<string, unknown>>({});
   const [customDockerfile, setCustomDockerfile] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [autoMerge, setAutoMerge] = useState(false);
@@ -110,11 +112,9 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
       .then((res) => {
         const r = res.repo;
         setRepo(r);
-        setImagePreset(r.imagePreset ?? "base");
-        setExtraPackages(r.extraPackages ?? "");
-        setSetupCommands(r.setupCommands ?? "");
+        setRuntimeManifest(r.runtimeManifest ?? manifestFromLegacy(r.imagePreset, r.extraPackages));
         setCustomDockerfile(r.customDockerfile ?? "");
-        if (r.setupCommands || r.customDockerfile) setShowAdvanced(true);
+        if (r.customDockerfile) setShowAdvanced(true);
         setAutoMerge(r.autoMerge);
         setCautiousMode(r.cautiousMode ?? false);
         setDefaultAgentType(r.defaultAgentType ?? "claude-code");
@@ -196,9 +196,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
     setSaving(true);
     try {
       await api.updateRepo(id, {
-        imagePreset,
-        extraPackages: extraPackages || undefined,
-        setupCommands: setupCommands || undefined,
+        runtimeManifest: isManifestEmpty(runtimeManifest) ? null : runtimeManifest,
         customDockerfile: customDockerfile || null,
         autoMerge: cautiousMode ? false : autoMerge,
         cautiousMode,
@@ -1432,107 +1430,12 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
         })()}
       </section>
 
-      {/* Image */}
+      {/* Runtime Environment */}
       <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-3">
-        <h2 className="text-sm font-medium">Container Image</h2>
-        <p className="text-xs text-text-muted">
-          Choose the base image for agent pods working on this repo.
-        </p>
-        <div className="grid gap-1.5">
-          {(
-            Object.entries(PRESET_IMAGES) as [
-              PresetImageId,
-              (typeof PRESET_IMAGES)[PresetImageId],
-            ][]
-          ).map(([key, img]) => (
-            <button
-              key={key}
-              onClick={() => setImagePreset(key)}
-              className={cn(
-                "flex items-start gap-3 p-2.5 rounded-md border text-left text-sm transition-colors",
-                imagePreset === key
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-text-muted bg-bg",
-              )}
-            >
-              <div
-                className={cn(
-                  "w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center",
-                  imagePreset === key ? "border-primary" : "border-border",
-                )}
-              >
-                {imagePreset === key && <div className="w-2 h-2 rounded-full bg-primary" />}
-              </div>
-              <div>
-                <span className="font-medium">{img.label}</span>
-                <p className="text-xs text-text-muted mt-0.5">{img.description}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-        <div>
-          <label className="block text-xs text-text-muted mb-1">
-            Extra apt packages (comma-separated)
-          </label>
-          <input
-            value={extraPackages}
-            onChange={(e) => setExtraPackages(e.target.value)}
-            placeholder="postgresql-client, redis-tools"
-            className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-          />
-        </div>
-
-        {/* Advanced toggle */}
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="text-xs text-primary hover:underline"
-        >
-          {showAdvanced ? "Hide advanced options" : "Show advanced options"}
-        </button>
-
-        {showAdvanced && (
-          <div className="space-y-4 pt-2 border-t border-border">
-            {/* Setup commands */}
-            <div>
-              <label className="block text-xs text-text-muted mb-1">Setup commands</label>
-              <p className="text-[10px] text-text-muted/60 mb-1.5">
-                Shell commands run inside the {isDocker ? "container" : "pod"} after cloning. Use
-                this to install dependencies, build tools, or configure the environment.
-              </p>
-              <textarea
-                value={setupCommands}
-                onChange={(e) => setSetupCommands(e.target.value)}
-                rows={4}
-                placeholder={"npm install\nnpx playwright install --with-deps\ncargo build"}
-                className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-xs font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-y leading-relaxed"
-              />
-            </div>
-
-            {/* Custom Dockerfile */}
-            <div>
-              <label className="block text-xs text-text-muted mb-1">Custom Dockerfile</label>
-              <p className="text-[10px] text-text-muted/60 mb-1.5">
-                Full Dockerfile override. When set, this is used instead of the preset image. Must
-                include all tools the agent needs (git, node, claude-code, gh).
-              </p>
-              <textarea
-                value={customDockerfile}
-                onChange={(e) => setCustomDockerfile(e.target.value)}
-                rows={8}
-                placeholder={
-                  "FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y git curl nodejs\nRUN npm install -g @anthropic-ai/claude-code\n# Add your custom tools here"
-                }
-                className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-xs font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-y leading-relaxed"
-              />
-              {customDockerfile && (
-                <p className="text-[10px] text-warning mt-1">
-                  Custom Dockerfile is set — the preset image above will be ignored. You must
-                  rebuild the image manually.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
+        <RuntimeManifestEditor
+          value={runtimeManifest as any}
+          onChange={setRuntimeManifest as any}
+        />
       </section>
 
       {/* Prompt override */}

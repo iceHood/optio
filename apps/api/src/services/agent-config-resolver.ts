@@ -66,7 +66,9 @@ async function loadAgentConfig(agentId: string): Promise<ResolvedAgentConfig | n
     thinking: agent.thinking ?? undefined,
     effort: agent.effort ?? undefined,
     // Image is NOT set from agent — repo owns the execution environment.
-    // Agent's extraPackages/setupCommands are additive on top of repo's.
+    // Agent's runtimeRequires is additive on top of repo's manifest.
+    runtimeRequires: agent.runtimeRequires ?? undefined,
+    // Legacy fields (kept for backward compat during migration)
     extraPackages: agent.extraPackages ?? undefined,
     setupCommands: agent.setupCommands ?? undefined,
     maxTurns: agent.maxTurns ?? undefined,

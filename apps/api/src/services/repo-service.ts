@@ -16,6 +16,7 @@ export interface RepoRecord {
   extraPackages: string | null;
   setupCommands: string | null;
   customDockerfile: string | null;
+  runtimeManifest: unknown | null;
   autoMerge: boolean;
   cautiousMode: boolean;
   defaultAgentType: string;
@@ -196,6 +197,7 @@ export async function updateRepo(
     memoryRequest?: string | null;
     memoryLimit?: string | null;
     dockerInDocker?: boolean;
+    runtimeManifest?: unknown;
   },
 ): Promise<RepoRecord | null> {
   // Extract slackWebhookUrl for encryption; pass everything else through

@@ -203,10 +203,11 @@ export const repos = pgTable(
     fullName: text("full_name").notNull(),
     defaultBranch: text("default_branch").notNull().default("main"),
     isPrivate: boolean("is_private").notNull().default(false),
-    imagePreset: text("image_preset").default("base"),
-    extraPackages: text("extra_packages"), // comma-separated
-    setupCommands: text("setup_commands"), // shell commands run at pod startup after clone
+    imagePreset: text("image_preset").default("base"), // @deprecated — use runtimeManifest
+    extraPackages: text("extra_packages"), // @deprecated — use runtimeManifest.systemPackages
+    setupCommands: text("setup_commands"), // @deprecated — use runtimeManifest.setup
     customDockerfile: text("custom_dockerfile"), // full Dockerfile override (advanced)
+    runtimeManifest: jsonb("runtime_manifest"), // structured environment spec (replaces imagePreset+extraPackages)
     autoMerge: boolean("auto_merge").notNull().default(false),
     cautiousMode: boolean("cautious_mode").notNull().default(false),
     defaultAgentType: text("default_agent_type").notNull().default("claude-code"),
@@ -551,6 +552,7 @@ export const mcpServers = pgTable(
     args: jsonb("args").$type<string[]>().notNull().default([]),
     env: jsonb("env").$type<Record<string, string>>(),
     installCommand: text("install_command"),
+    requires: jsonb("requires"), // RuntimeManifest — runtime dependencies this MCP needs
     scope: text("scope").notNull().default("global"), // "global" or repo URL
     repoUrl: text("repo_url"), // null = global, set = repo-scoped
     workspaceId: uuid("workspace_id"),
@@ -574,6 +576,7 @@ export const customSkills = pgTable(
     description: text("description"),
     prompt: text("prompt").notNull(), // markdown content (SKILL.md body)
     files: jsonb("files").$type<Array<{ path: string; content: string }>>(), // all files from zip/skill archive
+    requires: jsonb("requires"), // RuntimeManifest — runtime dependencies this skill needs
     scope: text("scope").notNull().default("global"), // "global" or repo URL
     repoUrl: text("repo_url"), // null = global, set = repo-scoped
     workspaceId: uuid("workspace_id"),
@@ -771,10 +774,11 @@ export const agents = pgTable(
     contextWindow: text("context_window"), // "200k" | "1m"
     thinking: boolean("thinking"),
     effort: text("effort"), // "low" | "medium" | "high"
-    imagePreset: text("image_preset"), // "base" | "node" | "python" | "go" | "rust" | "full"
-    customDockerfile: text("custom_dockerfile"),
-    extraPackages: text("extra_packages"),
-    setupCommands: text("setup_commands"),
+    imagePreset: text("image_preset"), // @deprecated — agent should be environment-independent
+    customDockerfile: text("custom_dockerfile"), // @deprecated
+    extraPackages: text("extra_packages"), // @deprecated — use runtimeRequires.systemPackages
+    setupCommands: text("setup_commands"), // @deprecated — use runtimeRequires.setup
+    runtimeRequires: jsonb("runtime_requires"), // declarative runtime deps (additive with repo manifest)
     maxTurns: integer("max_turns"),
     promptTemplate: text("prompt_template"), // custom system prompt for this agent
     workspaceId: uuid("workspace_id"),

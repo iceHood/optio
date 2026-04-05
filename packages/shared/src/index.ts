@@ -13,6 +13,9 @@ export * from "./utils/k8s-resources.js";
 export * from "./constants.js";
 export * from "./prompt-template.js";
 export * from "./types/image.js";
+export * from "./types/runtime-manifest.js";
+// runtime-resolver uses node:crypto — import directly where needed (server-only)
+// export * from "./runtime-resolver.js";
 export * from "./error-classifier.js";
 export * from "./types/session.js";
 export * from "./types/mcp.js";

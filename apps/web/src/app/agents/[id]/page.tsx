@@ -7,6 +7,11 @@ import { api } from "@/lib/api-client";
 import { Loader2, Save, Trash2, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import {
+  RuntimeManifestEditor,
+  manifestFromLegacy,
+  isManifestEmpty,
+} from "@/components/runtime-manifest-editor";
 
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -25,9 +30,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const [contextWindow, setContextWindow] = useState("");
   const [thinking, setThinking] = useState<boolean | null>(null);
   const [effort, setEffort] = useState("");
-  const [imagePreset, setImagePreset] = useState("");
-  const [extraPackages, setExtraPackages] = useState("");
-  const [setupCommands, setSetupCommands] = useState("");
+  const [runtimeRequires, setRuntimeRequires] = useState<Record<string, unknown>>({});
   const [maxTurns, setMaxTurns] = useState("");
   const [promptTemplate, setPromptTemplate] = useState("");
 
@@ -54,9 +57,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         setContextWindow(a.contextWindow ?? "");
         setThinking(a.thinking);
         setEffort(a.effort ?? "");
-        setImagePreset(a.imagePreset ?? "");
-        setExtraPackages(a.extraPackages ?? "");
-        setSetupCommands(a.setupCommands ?? "");
+        setRuntimeRequires(a.runtimeRequires ?? manifestFromLegacy(a.imagePreset, a.extraPackages));
         setMaxTurns(a.maxTurns != null ? String(a.maxTurns) : "");
         setPromptTemplate(a.promptTemplate ?? "");
         setMcpServerIds(mcpRes.mcpServerIds);
@@ -80,9 +81,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           contextWindow: contextWindow || null,
           thinking,
           effort: effort || null,
-          imagePreset: imagePreset || null,
-          extraPackages: extraPackages || null,
-          setupCommands: setupCommands || null,
+          runtimeRequires: isManifestEmpty(runtimeRequires) ? null : runtimeRequires,
           maxTurns: maxTurns ? parseInt(maxTurns) : null,
           promptTemplate: promptTemplate || null,
         }),
@@ -270,52 +269,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </section>
 
-        {/* Container */}
+        {/* Runtime Dependencies */}
         <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-4">
-          <h2 className="text-sm font-medium text-text-muted uppercase tracking-wider">
-            Container
-          </h2>
-
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Image Preset</label>
-            <select
-              value={imagePreset}
-              onChange={(e) => setImagePreset(e.target.value)}
-              className={inputCls}
-            >
-              <option value="">Inherit from repo</option>
-              <option value="base">Base</option>
-              <option value="node">Node</option>
-              <option value="python">Python</option>
-              <option value="go">Go</option>
-              <option value="rust">Rust</option>
-              <option value="full">Full</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-text-muted mb-1">
-              Extra Packages (comma-separated)
-            </label>
-            <input
-              type="text"
-              value={extraPackages}
-              onChange={(e) => setExtraPackages(e.target.value)}
-              placeholder="e.g. postgresql-client, jq"
-              className={inputCls}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Setup Commands</label>
-            <textarea
-              value={setupCommands}
-              onChange={(e) => setSetupCommands(e.target.value)}
-              placeholder="Shell commands run at pod startup"
-              rows={2}
-              className={inputCls + " resize-y"}
-            />
-          </div>
+          <RuntimeManifestEditor
+            value={runtimeRequires as any}
+            onChange={setRuntimeRequires as any}
+            compact
+            label="Runtime Dependencies"
+            description="Declare packages and tools this agent needs. These are additive on top of the repo environment."
+          />
         </section>
 
         {/* MCP Servers */}

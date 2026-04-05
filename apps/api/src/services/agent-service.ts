@@ -48,6 +48,7 @@ export async function createAgent(
       customDockerfile: input.customDockerfile,
       extraPackages: input.extraPackages,
       setupCommands: input.setupCommands,
+      runtimeRequires: input.runtimeRequires ?? undefined,
       maxTurns: input.maxTurns,
       promptTemplate: input.promptTemplate,
       workspaceId: workspaceId ?? undefined,
@@ -71,6 +72,7 @@ export async function updateAgent(id: string, input: UpdateAgentInput): Promise<
   if (input.customDockerfile !== undefined) updates.customDockerfile = input.customDockerfile;
   if (input.extraPackages !== undefined) updates.extraPackages = input.extraPackages;
   if (input.setupCommands !== undefined) updates.setupCommands = input.setupCommands;
+  if (input.runtimeRequires !== undefined) updates.runtimeRequires = input.runtimeRequires;
   if (input.maxTurns !== undefined) updates.maxTurns = input.maxTurns;
   if (input.promptTemplate !== undefined) updates.promptTemplate = input.promptTemplate;
 
@@ -138,6 +140,7 @@ function mapRow(row: typeof agents.$inferSelect): AgentProfile {
     customDockerfile: row.customDockerfile,
     extraPackages: row.extraPackages,
     setupCommands: row.setupCommands,
+    runtimeRequires: row.runtimeRequires as AgentProfile["runtimeRequires"],
     maxTurns: row.maxTurns,
     promptTemplate: row.promptTemplate,
     workspaceId: row.workspaceId,

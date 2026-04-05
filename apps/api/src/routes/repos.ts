@@ -18,10 +18,29 @@ const createRepoSchema = z.object({
   isPrivate: z.boolean().optional(),
 });
 
+const runtimeManifestSchema = z.object({
+  languages: z
+    .array(
+      z.object({
+        name: z.enum(["node", "python", "go", "rust"]),
+        version: z.string().optional(),
+        tools: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  systemPackages: z.array(z.string()).optional(),
+  nodePackages: z.array(z.string()).optional(),
+  pythonPackages: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+  setup: z.array(z.string()).optional(),
+  capabilities: z.array(z.enum(["docker", "gpu", "browser"])).optional(),
+});
+
 const updateRepoSchema = z.object({
-  imagePreset: z.string().optional(),
-  extraPackages: z.string().optional(),
-  setupCommands: z.string().optional(),
+  runtimeManifest: runtimeManifestSchema.nullable().optional(),
+  imagePreset: z.string().optional(), // @deprecated
+  extraPackages: z.string().optional(), // @deprecated
+  setupCommands: z.string().optional(), // @deprecated
   customDockerfile: z.string().nullable().optional(),
   autoMerge: z.boolean().optional(),
   cautiousMode: z.boolean().optional(),
@@ -105,6 +124,10 @@ export async function repoRoutes(app: FastifyInstance) {
           await repoService.updateRepo(repo.id, {
             imagePreset: detected.imagePreset,
             testCommand: detected.testCommand,
+            runtimeManifest:
+              Object.keys(detected.runtimeManifest).length > 0
+                ? detected.runtimeManifest
+                : undefined,
           });
         }
       }
@@ -194,6 +217,8 @@ export async function repoRoutes(app: FastifyInstance) {
       await repoService.updateRepo(id, {
         imagePreset: detected.imagePreset,
         testCommand: detected.testCommand ?? undefined,
+        runtimeManifest:
+          Object.keys(detected.runtimeManifest).length > 0 ? detected.runtimeManifest : undefined,
       });
       reply.send({ detected });
     } catch (err) {

@@ -7,7 +7,11 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { api } from "@/lib/api-client";
 import { NumberInput } from "@/components/number-input";
 import { toast } from "sonner";
-import { PRESET_IMAGES, type PresetImageId } from "@optio/shared";
+import {
+  RuntimeManifestEditor,
+  manifestFromLegacy,
+  isManifestEmpty,
+} from "@/components/runtime-manifest-editor";
 import {
   Loader2,
   ArrowLeft,
@@ -47,11 +51,8 @@ export default function NewRepoPage() {
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState("");
 
-  // Step 2: Image
-  const [imagePreset, setImagePreset] = useState("base");
-  const [extraPackages, setExtraPackages] = useState("");
-  const [setupCommands, setSetupCommands] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Step 2: Runtime environment
+  const [runtimeManifest, setRuntimeManifest] = useState<Record<string, unknown>>({});
   const [detected, setDetected] = useState(false);
 
   // Step 3: Agent
@@ -121,9 +122,7 @@ export default function NewRepoPage() {
 
       // Update with all the settings
       await api.updateRepo(repoId, {
-        imagePreset,
-        extraPackages: extraPackages || undefined,
-        setupCommands: setupCommands || undefined,
+        runtimeManifest: isManifestEmpty(runtimeManifest) ? undefined : runtimeManifest,
         claudeModel,
         claudeContextWindow,
         claudeThinking,
@@ -229,19 +228,13 @@ export default function NewRepoPage() {
         )}
 
         {currentStep.id === "image" && (
-          <ImageStep
-            imagePreset={imagePreset}
-            setImagePreset={setImagePreset}
-            extraPackages={extraPackages}
-            setExtraPackages={setExtraPackages}
-            setupCommands={setupCommands}
-            setSetupCommands={setSetupCommands}
-            showAdvanced={showAdvanced}
-            setShowAdvanced={setShowAdvanced}
-            detected={detected}
-            inputClass={inputClass}
-            isDocker={isDocker}
-          />
+          <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-4">
+            <RuntimeManifestEditor
+              value={runtimeManifest as any}
+              onChange={setRuntimeManifest as any}
+              detected={detected}
+            />
+          </section>
         )}
 
         {currentStep.id === "agent" && (
@@ -409,113 +402,7 @@ function RepoStep({
   );
 }
 
-/* ── Step 2: Container Image ────────────────────────────────── */
-
-function ImageStep({
-  imagePreset,
-  setImagePreset,
-  extraPackages,
-  setExtraPackages,
-  setupCommands,
-  setSetupCommands,
-  showAdvanced,
-  setShowAdvanced,
-  detected,
-  inputClass,
-  isDocker,
-}: {
-  imagePreset: string;
-  setImagePreset: (v: string) => void;
-  extraPackages: string;
-  setExtraPackages: (v: string) => void;
-  setupCommands: string;
-  setSetupCommands: (v: string) => void;
-  showAdvanced: boolean;
-  setShowAdvanced: (v: boolean) => void;
-  detected: boolean;
-  inputClass: string;
-  isDocker: boolean;
-}) {
-  return (
-    <section className="p-5 rounded-xl border border-border/50 bg-bg-card space-y-4">
-      <div>
-        <h2 className="text-sm font-medium mb-1">Container Image</h2>
-        <p className="text-xs text-text-muted">
-          Choose the base image for agent pods working on this repo.
-          {detected && " Auto-detected from repository contents."}
-        </p>
-      </div>
-
-      <div className="grid gap-1.5">
-        {(
-          Object.entries(PRESET_IMAGES) as [PresetImageId, (typeof PRESET_IMAGES)[PresetImageId]][]
-        ).map(([key, img]) => (
-          <button
-            key={key}
-            onClick={() => setImagePreset(key)}
-            className={cn(
-              "flex items-start gap-3 p-2.5 rounded-md border text-left text-sm transition-colors",
-              imagePreset === key
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-text-muted bg-bg",
-            )}
-          >
-            <div
-              className={cn(
-                "w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center",
-                imagePreset === key ? "border-primary" : "border-border",
-              )}
-            >
-              {imagePreset === key && <div className="w-2 h-2 rounded-full bg-primary" />}
-            </div>
-            <div>
-              <span className="font-medium">{img.label}</span>
-              <p className="text-xs text-text-muted mt-0.5">{img.description}</p>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div>
-        <label className="block text-xs text-text-muted mb-1">
-          Extra apt packages (comma-separated)
-        </label>
-        <input
-          value={extraPackages}
-          onChange={(e) => setExtraPackages(e.target.value)}
-          placeholder="postgresql-client, redis-tools"
-          className={inputClass}
-        />
-      </div>
-
-      <button
-        onClick={() => setShowAdvanced(!showAdvanced)}
-        className="text-xs text-primary hover:underline"
-      >
-        {showAdvanced ? "Hide advanced options" : "Show advanced options"}
-      </button>
-
-      {showAdvanced && (
-        <div className="space-y-4 pt-2 border-t border-border">
-          <div>
-            <label className="block text-xs text-text-muted mb-1">Setup commands</label>
-            <p className="text-[10px] text-text-muted/60 mb-1.5">
-              Shell commands run inside the {isDocker ? "container" : "pod"} after cloning. Use this
-              to install dependencies, build tools, or configure the environment.
-            </p>
-            <textarea
-              value={setupCommands}
-              onChange={(e) => setSetupCommands(e.target.value)}
-              rows={4}
-              placeholder={"npm install\nnpx playwright install --with-deps\ncargo build"}
-              className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-xs font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-y leading-relaxed"
-            />
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
+/* ── Step 2 is now inline using RuntimeManifestEditor ────── */
 
 /* ── Step 3: Agent Settings ─────────────────────────────────── */
 

@@ -45,18 +45,67 @@ elif [ -n "${GITHUB_TOKEN:-}" ]; then
   echo "[optio] GitHub CLI configured"
 fi
 
-# Install extra packages if requested (comma or space separated)
-if [ -n "${OPTIO_EXTRA_PACKAGES:-}" ]; then
-  PACKAGES=$(echo "${OPTIO_EXTRA_PACKAGES}" | tr ',' ' ')
-  # Validate package names to prevent command injection
+# ── Runtime provisioning ────────────────────────────────────────────────────
+# New: structured manifest-based provisioning (OPTIO_RUNTIME_MANIFEST)
+# Legacy: comma/space-separated package list (OPTIO_EXTRA_PACKAGES)
+install_validated_packages() {
+  local PACKAGES="$1"
   for pkg in ${PACKAGES}; do
-    if [[ ! "$pkg" =~ ^[a-zA-Z0-9][a-zA-Z0-9.+\-]+$ ]]; then
+    if [[ ! "$pkg" =~ ^[a-zA-Z0-9][a-zA-Z0-9.+\-\[\]]+$ ]]; then
       echo "[optio] Error: invalid package name: $pkg" >&2
-      exit 1
+      return 1
     fi
   done
-  echo "[optio] Installing packages: ${PACKAGES}"
-  sudo apt-get update -qq 2>/dev/null && sudo apt-get install -y -qq ${PACKAGES} 2>&1 | tail -3 || echo "[optio] Warning: package install failed"
+  if [ -n "${PACKAGES}" ]; then
+    echo "[optio] Installing system packages: ${PACKAGES}"
+    sudo apt-get update -qq 2>/dev/null && sudo apt-get install -y -qq ${PACKAGES} 2>&1 | tail -3 || echo "[optio] Warning: package install failed"
+  fi
+}
+
+if [ -n "${OPTIO_RUNTIME_MANIFEST:-}" ]; then
+  echo "[optio] Provisioning from runtime manifest"
+
+  # System packages
+  SYS_PKGS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.systemPackages[]?] | join(" ")' 2>/dev/null || echo "")
+  install_validated_packages "${SYS_PKGS}"
+
+  # Global node packages
+  NODE_PKGS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.nodePackages[]?] | join(" ")' 2>/dev/null || echo "")
+  if [ -n "${NODE_PKGS}" ]; then
+    echo "[optio] Installing node packages: ${NODE_PKGS}"
+    npm install -g ${NODE_PKGS} 2>&1 | tail -3 || echo "[optio] Warning: node package install failed"
+  fi
+
+  # Python packages
+  PY_PKGS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.pythonPackages[]?] | join(" ")' 2>/dev/null || echo "")
+  if [ -n "${PY_PKGS}" ]; then
+    echo "[optio] Installing python packages: ${PY_PKGS}"
+    pip install --break-system-packages ${PY_PKGS} 2>&1 | tail -3 || echo "[optio] Warning: python package install failed"
+  fi
+
+  # Environment variables
+  ENV_KEYS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '.envVars // {} | keys[]' 2>/dev/null || echo "")
+  for key in ${ENV_KEYS}; do
+    val=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r ".envVars[\"${key}\"]")
+    export "${key}=${val}"
+    echo "export ${key}=\"${val}\"" >> ~/.bashrc
+  done
+
+  # Setup commands
+  SETUP_CMDS=$(echo "${OPTIO_RUNTIME_MANIFEST}" | jq -r '[.setupCommands[]?] | join("\n")' 2>/dev/null || echo "")
+  if [ -n "${SETUP_CMDS}" ]; then
+    echo "[optio] Running manifest setup commands"
+    echo "${SETUP_CMDS}" | while IFS= read -r cmd; do
+      [ -n "${cmd}" ] && eval "${cmd}" || true
+    done
+  fi
+
+  echo "[optio] Runtime manifest provisioning complete"
+
+elif [ -n "${OPTIO_EXTRA_PACKAGES:-}" ]; then
+  # Legacy fallback: comma or space separated package list
+  PACKAGES=$(echo "${OPTIO_EXTRA_PACKAGES}" | tr ',' ' ')
+  install_validated_packages "${PACKAGES}"
 fi
 
 # Clone repo (--recurse-submodules handles repos with submodules)

@@ -17,14 +17,14 @@ describe("repo-detect-service", () => {
 
   it("returns base preset for non-GitHub URLs", async () => {
     const result = await detectRepoConfig("https://gitlab.com/o/r", "token");
-    expect(result).toEqual({ imagePreset: "base", languages: [] });
+    expect(result).toEqual({ imagePreset: "base", languages: [], runtimeManifest: {} });
   });
 
   it("returns base preset when API call fails", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
 
     const result = await detectRepoConfig("https://github.com/owner/repo", "token");
-    expect(result).toEqual({ imagePreset: "base", languages: [] });
+    expect(result).toEqual({ imagePreset: "base", languages: [], runtimeManifest: {} });
   });
 
   it("detects node project", async () => {
@@ -123,7 +123,7 @@ describe("repo-detect-service", () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
 
     const result = await detectRepoConfig("https://github.com/owner/repo", "token");
-    expect(result).toEqual({ imagePreset: "base", languages: [] });
+    expect(result).toEqual({ imagePreset: "base", languages: [], runtimeManifest: {} });
   });
 
   it("sends correct authorization header", async () => {

@@ -70,10 +70,16 @@ export interface AgentProfile {
   contextWindow?: string | null;
   thinking?: boolean | null;
   effort?: string | null;
+  /** @deprecated Use runtimeRequires instead. Agent should be environment-independent. */
   imagePreset?: string | null;
+  /** @deprecated Use runtimeRequires instead. */
   customDockerfile?: string | null;
+  /** @deprecated Use runtimeRequires.systemPackages instead. */
   extraPackages?: string | null;
+  /** @deprecated Use runtimeRequires.setup instead. */
   setupCommands?: string | null;
+  /** Declarative runtime dependencies (packages, tools the agent's skills/MCPs need). */
+  runtimeRequires?: import("./runtime-manifest.js").RuntimeManifest | null;
   maxTurns?: number | null;
   promptTemplate?: string | null;
   workspaceId?: string | null;
@@ -89,10 +95,16 @@ export interface CreateAgentInput {
   contextWindow?: string;
   thinking?: boolean;
   effort?: string;
+  /** @deprecated Use runtimeRequires instead. */
   imagePreset?: string;
+  /** @deprecated Use runtimeRequires instead. */
   customDockerfile?: string;
+  /** @deprecated Use runtimeRequires.systemPackages instead. */
   extraPackages?: string;
+  /** @deprecated Use runtimeRequires.setup instead. */
   setupCommands?: string;
+  /** Declarative runtime dependencies. */
+  runtimeRequires?: import("./runtime-manifest.js").RuntimeManifest;
   maxTurns?: number;
   promptTemplate?: string;
 }
@@ -105,10 +117,16 @@ export interface UpdateAgentInput {
   contextWindow?: string | null;
   thinking?: boolean | null;
   effort?: string | null;
+  /** @deprecated Use runtimeRequires instead. */
   imagePreset?: string | null;
+  /** @deprecated Use runtimeRequires instead. */
   customDockerfile?: string | null;
+  /** @deprecated Use runtimeRequires.systemPackages instead. */
   extraPackages?: string | null;
+  /** @deprecated Use runtimeRequires.setup instead. */
   setupCommands?: string | null;
+  /** Declarative runtime dependencies. */
+  runtimeRequires?: import("./runtime-manifest.js").RuntimeManifest | null;
   maxTurns?: number | null;
   promptTemplate?: string | null;
 }
@@ -117,7 +135,6 @@ export interface UpdateAgentInput {
  *
  * When agentId is set, the agent is the authoritative source for AI behavior.
  * Image/environment comes from the repo, not the agent.
- * extraPackages/setupCommands are additive (repo base + agent additions).
  */
 export interface ResolvedAgentConfig {
   agentId?: string;
@@ -126,9 +143,13 @@ export interface ResolvedAgentConfig {
   contextWindow?: string;
   thinking?: boolean;
   effort?: string;
-  // No imagePreset — repo owns the execution environment
-  extraPackages?: string; // Agent-specific additions (additive with repo)
-  setupCommands?: string; // Agent-specific additions (additive with repo)
+  // No imagePreset — repo owns the execution environment.
+  /** @deprecated Use runtimeRequires instead. */
+  extraPackages?: string;
+  /** @deprecated Use runtimeRequires.setup instead. */
+  setupCommands?: string;
+  /** Declarative runtime dependencies from this agent (additive with repo manifest). */
+  runtimeRequires?: import("./runtime-manifest.js").RuntimeManifest;
   maxTurns?: number;
   promptTemplate?: string;
 }

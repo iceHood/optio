@@ -34,7 +34,6 @@ export default function AgentsPage() {
     model: "sonnet",
     effort: "high",
     maxTurns: "",
-    imagePreset: "",
   });
 
   const loadAgents = () => {
@@ -224,12 +223,15 @@ export default function AgentsPage() {
                     )}
                     {agent.effort && <span>Effort: {agent.effort}</span>}
                     {agent.maxTurns && <span>Max turns: {agent.maxTurns}</span>}
-                    {agent.imagePreset && (
-                      <span className="flex items-center gap-1">
-                        <Cpu className="w-3 h-3" />
-                        {agent.imagePreset}
-                      </span>
-                    )}
+                    {agent.runtimeRequires &&
+                      (agent.runtimeRequires as any).languages?.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Cpu className="w-3 h-3" />
+                          {(agent.runtimeRequires as any).languages
+                            .map((l: any) => l.name)
+                            .join(", ")}
+                        </span>
+                      )}
                     {agent.description && (
                       <span className="truncate max-w-[200px]">{agent.description}</span>
                     )}

@@ -68,7 +68,11 @@ export default function ReposPage() {
                   </div>
                   <div className="flex items-center gap-3 text-xs text-text-muted mt-0.5">
                     <span>Branch: {repo.defaultBranch}</span>
-                    <span>Image: {repo.imagePreset ?? "base"}</span>
+                    <span>
+                      {repo.runtimeManifest
+                        ? `Env: ${(repo.runtimeManifest as any).languages?.map((l: any) => l.name).join(", ") || "base"}`
+                        : `Image: ${repo.imagePreset ?? "base"}`}
+                    </span>
                     {repo.autoMerge && <span className="text-warning">auto-merge</span>}
                   </div>
                 </div>

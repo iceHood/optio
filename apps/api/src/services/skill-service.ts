@@ -204,6 +204,7 @@ function mapRow(row: typeof customSkills.$inferSelect): CustomSkillConfig {
     name: row.name,
     description: row.description,
     prompt: row.prompt,
+    requires: row.requires as CustomSkillConfig["requires"],
     scope: row.scope,
     repoUrl: row.repoUrl,
     workspaceId: row.workspaceId,

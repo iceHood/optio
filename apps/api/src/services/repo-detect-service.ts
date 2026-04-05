@@ -1,9 +1,11 @@
 import { logger } from "../logger.js";
+import type { RuntimeManifest, LanguageRequirement } from "@optio/shared";
 
 interface DetectedConfig {
   imagePreset: string;
   languages: string[];
   testCommand?: string;
+  runtimeManifest: RuntimeManifest;
 }
 
 /**
@@ -15,7 +17,7 @@ export async function detectRepoConfig(
   githubToken: string,
 ): Promise<DetectedConfig> {
   const match = repoUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
-  if (!match) return { imagePreset: "base", languages: [] };
+  if (!match) return { imagePreset: "base", languages: [], runtimeManifest: {} };
   const [, owner, repo] = match;
 
   const headers = {
@@ -25,7 +27,7 @@ export async function detectRepoConfig(
 
   try {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/`, { headers });
-    if (!res.ok) return { imagePreset: "base", languages: [] };
+    if (!res.ok) return { imagePreset: "base", languages: [], runtimeManifest: {} };
 
     const files = (await res.json()) as Array<{ name: string; type: string }>;
     const fileNames = new Set(files.map((f) => f.name));
@@ -75,10 +77,25 @@ export async function detectRepoConfig(
       imagePreset = "python";
     }
 
+    // Build structured runtime manifest from detected languages
+    const langMap: Record<string, string> = {
+      node: "node",
+      python: "python",
+      go: "go",
+      rust: "rust",
+    };
+    const runtimeManifest: RuntimeManifest = {};
+    const langReqs: LanguageRequirement[] = [];
+    for (const lang of languages) {
+      const name = langMap[lang];
+      if (name) langReqs.push({ name: name as LanguageRequirement["name"] });
+    }
+    if (langReqs.length > 0) runtimeManifest.languages = langReqs;
+
     logger.info({ repoUrl, imagePreset, languages, testCommand }, "Auto-detected repo config");
-    return { imagePreset, languages, testCommand };
+    return { imagePreset, languages, testCommand, runtimeManifest };
   } catch (err) {
     logger.warn({ err, repoUrl }, "Failed to detect repo config");
-    return { imagePreset: "base", languages: [] };
+    return { imagePreset: "base", languages: [], runtimeManifest: {} };
   }
 }
