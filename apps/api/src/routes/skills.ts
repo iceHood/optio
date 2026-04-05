@@ -2,10 +2,29 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import * as skillService from "../services/skill-service.js";
 
+const runtimeManifestSchema = z.object({
+  languages: z
+    .array(
+      z.object({
+        name: z.enum(["node", "python", "go", "rust"]),
+        version: z.string().optional(),
+        tools: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  systemPackages: z.array(z.string()).optional(),
+  nodePackages: z.array(z.string()).optional(),
+  pythonPackages: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+  setup: z.array(z.string()).optional(),
+  capabilities: z.array(z.enum(["docker", "gpu", "browser"])).optional(),
+});
+
 const createSkillSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   prompt: z.string().min(1),
+  requires: runtimeManifestSchema.optional(),
   repoUrl: z.string().optional(),
   enabled: z.boolean().optional(),
 });
@@ -14,6 +33,7 @@ const updateSkillSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
   prompt: z.string().min(1).optional(),
+  requires: runtimeManifestSchema.nullable().optional(),
   enabled: z.boolean().optional(),
 });
 

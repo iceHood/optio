@@ -36,6 +36,7 @@ export async function createSkill(
     name: string;
     description?: string;
     prompt: string;
+    requires?: Record<string, unknown>;
     repoUrl?: string;
     enabled?: boolean;
   },
@@ -47,6 +48,7 @@ export async function createSkill(
       name: input.name,
       description: input.description ?? undefined,
       prompt: input.prompt,
+      requires: input.requires ?? undefined,
       scope: input.repoUrl ?? "global",
       repoUrl: input.repoUrl ?? undefined,
       workspaceId: workspaceId ?? undefined,
@@ -62,6 +64,7 @@ export async function updateSkill(
     name?: string;
     description?: string | null;
     prompt?: string;
+    requires?: Record<string, unknown> | null;
     enabled?: boolean;
   },
 ): Promise<CustomSkillConfig> {
@@ -69,6 +72,7 @@ export async function updateSkill(
   if (input.name !== undefined) updates.name = input.name;
   if (input.description !== undefined) updates.description = input.description;
   if (input.prompt !== undefined) updates.prompt = input.prompt;
+  if (input.requires !== undefined) updates.requires = input.requires;
   if (input.enabled !== undefined) updates.enabled = input.enabled;
 
   const [row] = await db

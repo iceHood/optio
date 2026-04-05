@@ -28,6 +28,7 @@ import {
   Layers,
 } from "lucide-react";
 import { OPTIO_TOOL_CATEGORIES, ALL_OPTIO_TOOL_NAMES } from "@optio/shared";
+import { RuntimeManifestEditor, isManifestEmpty } from "@/components/runtime-manifest-editor";
 
 function PromptTemplateEditor() {
   const [template, setTemplate] = useState("");
@@ -331,6 +332,8 @@ function GlobalMcpServers() {
   const [args, setArgs] = useState("");
   const [env, setEnv] = useState("");
   const [installCmd, setInstallCmd] = useState("");
+  const [mcpRequires, setMcpRequires] = useState<Record<string, unknown>>({});
+  const [showMcpRequires, setShowMcpRequires] = useState(false);
 
   useEffect(() => {
     api
@@ -469,6 +472,29 @@ function GlobalMcpServers() {
               className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setShowMcpRequires(!showMcpRequires)}
+            className="flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            {showMcpRequires ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            Runtime dependencies
+          </button>
+          {showMcpRequires && (
+            <div className="pt-1 border-t border-border/50">
+              <RuntimeManifestEditor
+                value={mcpRequires as any}
+                onChange={setMcpRequires as any}
+                compact
+                label="Dependencies"
+                description="Packages this MCP server needs at runtime."
+              />
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <button
               onClick={() => {
@@ -504,7 +530,8 @@ function GlobalMcpServers() {
                   args: parsedArgs.length > 0 ? parsedArgs : undefined,
                   env: Object.keys(parsedEnv).length > 0 ? parsedEnv : undefined,
                   installCommand: installCmd || undefined,
-                });
+                  requires: isManifestEmpty(mcpRequires) ? undefined : mcpRequires,
+                } as any);
                 setServers((prev) => [...prev, res.server]);
                 setShowAdd(false);
                 setName("");
@@ -512,6 +539,8 @@ function GlobalMcpServers() {
                 setArgs("");
                 setEnv("");
                 setInstallCmd("");
+                setMcpRequires({});
+                setShowMcpRequires(false);
                 toast.success("MCP server added");
               }}
               className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary-hover"
@@ -532,6 +561,8 @@ function GlobalSkills() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [skillRequires, setSkillRequires] = useState<Record<string, unknown>>({});
+  const [showSkillRequires, setShowSkillRequires] = useState(false);
 
   useEffect(() => {
     api
@@ -647,6 +678,29 @@ function GlobalSkills() {
               className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-xs font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-y"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setShowSkillRequires(!showSkillRequires)}
+            className="flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            {showSkillRequires ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            Runtime dependencies
+          </button>
+          {showSkillRequires && (
+            <div className="pt-1 border-t border-border/50">
+              <RuntimeManifestEditor
+                value={skillRequires as any}
+                onChange={setSkillRequires as any}
+                compact
+                label="Dependencies"
+                description="Packages this skill needs at runtime."
+              />
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <button
               onClick={() => {
@@ -654,6 +708,8 @@ function GlobalSkills() {
                 setName("");
                 setDescription("");
                 setPrompt("");
+                setSkillRequires({});
+                setShowSkillRequires(false);
               }}
               className="px-3 py-1.5 rounded-md text-xs text-text-muted hover:bg-bg-hover"
             >
@@ -669,12 +725,15 @@ function GlobalSkills() {
                   name,
                   description: description || undefined,
                   prompt,
-                });
+                  requires: isManifestEmpty(skillRequires) ? undefined : skillRequires,
+                } as any);
                 setSkills((prev) => [...prev, res.skill]);
                 setShowAdd(false);
                 setName("");
                 setDescription("");
                 setPrompt("");
+                setSkillRequires({});
+                setShowSkillRequires(false);
                 toast.success("Skill added");
               }}
               className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary-hover"

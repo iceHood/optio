@@ -37,6 +37,7 @@ export async function createMcpServer(
     args?: string[];
     env?: Record<string, string>;
     installCommand?: string;
+    requires?: Record<string, unknown>;
     repoUrl?: string;
     enabled?: boolean;
   },
@@ -50,6 +51,7 @@ export async function createMcpServer(
       args: input.args ?? [],
       env: input.env ?? undefined,
       installCommand: input.installCommand ?? undefined,
+      requires: input.requires ?? undefined,
       scope: input.repoUrl ?? "global",
       repoUrl: input.repoUrl ?? undefined,
       workspaceId: workspaceId ?? undefined,
@@ -67,6 +69,7 @@ export async function updateMcpServer(
     args?: string[];
     env?: Record<string, string> | null;
     installCommand?: string | null;
+    requires?: Record<string, unknown> | null;
     enabled?: boolean;
   },
 ): Promise<McpServerConfig> {
@@ -76,6 +79,7 @@ export async function updateMcpServer(
   if (input.args !== undefined) updates.args = input.args;
   if (input.env !== undefined) updates.env = input.env;
   if (input.installCommand !== undefined) updates.installCommand = input.installCommand;
+  if (input.requires !== undefined) updates.requires = input.requires;
   if (input.enabled !== undefined) updates.enabled = input.enabled;
 
   const [row] = await db.update(mcpServers).set(updates).where(eq(mcpServers.id, id)).returning();
